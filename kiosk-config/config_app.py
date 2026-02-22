@@ -163,6 +163,18 @@ class KioskConfigApp(Gtk.Window):
         launch_btn.connect('clicked', self._on_launch_kiosk)
         btn_row.pack_start(launch_btn, False, False, 0)
 
+        btn_row2 = Gtk.Box(spacing=8)
+        box.pack_start(btn_row2, False, False, 0)
+
+        restart_btn = Gtk.Button(label='Restart Kiosk')
+        restart_btn.connect('clicked', self._on_restart_kiosk)
+        btn_row2.pack_start(restart_btn, False, False, 0)
+
+        reboot_btn = Gtk.Button(label='Reboot Device')
+        reboot_btn.get_style_context().add_class('destructive-action')
+        reboot_btn.connect('clicked', self._on_reboot_device)
+        btn_row2.pack_start(reboot_btn, False, False, 0)
+
         return box
 
     # ------------------------------------------------------------------
@@ -325,6 +337,36 @@ class KioskConfigApp(Gtk.Window):
             script = '/opt/kiosk/kiosk-launch.sh'
         subprocess.Popen(['/bin/bash', script])
         self.hide()
+
+    def _on_restart_kiosk(self, _btn):
+        self._set_status('Restarting kiosk…')
+        # Kill any running Chromium instance then relaunch
+        subprocess.run(['pkill', '-x', 'chromium-browser'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['pkill', '-x', 'chromium'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        here   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        script = os.path.join(here, 'kiosk-launch.sh')
+        if not os.path.isfile(script):
+            script = '/opt/kiosk/kiosk-launch.sh'
+        subprocess.Popen(['/bin/bash', script])
+        self.hide()
+
+    def _on_reboot_device(self, _btn):
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=Gtk.DialogFlags.MODAL,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.YES_NO,
+            text='Reboot Device?',
+        )
+        dialog.format_secondary_text(
+            'Are you sure you want to reboot the device?')
+        response = dialog.run()
+        dialog.destroy()
+        if response == Gtk.ResponseType.YES:
+            self._set_status('Rebooting…')
+            subprocess.run(['sudo', 'systemctl', 'reboot'])
 
     # ------------------------------------------------------------------
     # Signal handlers – Network

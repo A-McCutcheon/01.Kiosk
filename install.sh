@@ -129,6 +129,8 @@ cat > "${SUDOERS_FILE}" <<EOF
 # Allow the kiosk user to manage network connections without a password prompt.
 # Only /usr/bin/nmcli is permitted; no shell escapes are possible via nmcli.
 ${KIOSK_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmcli
+# Allow the kiosk user to reboot the device without a password prompt.
+${KIOSK_USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl reboot
 EOF
 chmod 0440 "${SUDOERS_FILE}"
 echo "      Wrote ${SUDOERS_FILE}"

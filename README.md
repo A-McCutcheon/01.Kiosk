@@ -72,6 +72,8 @@ The config app has three tabs:
 - Enter the URL to display (e.g. `https://intranet.company.com`).
 - **Save URL** – persists the URL to `~/.config/kiosk/kiosk.conf`.
 - **Launch Kiosk** – saves the URL and starts Chromium in kiosk mode.
+- **Restart Kiosk** – kills any running Chromium instance and relaunches it.
+- **Reboot Device** – prompts for confirmation then reboots the device.
 
 ### Network tab
 - Choose a network interface from the dropdown.
