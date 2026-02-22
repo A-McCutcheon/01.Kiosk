@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Kiosk
+Comment=Start the kiosk launcher on login
+Exec=/opt/kiosk/kiosk-launch.sh
+Terminal=false
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
