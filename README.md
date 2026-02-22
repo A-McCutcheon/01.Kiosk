@@ -40,7 +40,9 @@ an operator configuration app for network settings and URL management.
 ## Requirements
 
 - Ubuntu Desktop **22.04 LTS** or **24.04 LTS** (or any Ubuntu Desktop LTS release using GDM3 or LightDM)
-- Internet access during installation (for `apt-get`)
+- The following packages must be installed: `chromium-browser`, `python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-3.0`, `network-manager`  
+  On Ubuntu Desktop LTS, all packages except `chromium-browser` are pre-installed.  
+  If all required packages are already installed (or pre-loaded on the machine), **no internet access is required** during installation.
 
 ---
 
