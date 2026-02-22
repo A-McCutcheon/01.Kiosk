@@ -39,14 +39,22 @@ echo "  Install dir : ${INSTALL_DIR}"
 echo ""
 
 # ── 1. Packages ────────────────────────────────────────────────────────────
-echo "[1/7] Installing required packages…"
-apt-get update -qq
-apt-get install -y \
-    chromium-browser \
-    python3-gi \
-    python3-gi-cairo \
-    gir1.2-gtk-3.0 \
-    network-manager
+echo "[1/7] Checking required packages…"
+REQUIRED_PKGS=(chromium-browser python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager)
+MISSING_PKGS=()
+for pkg in "${REQUIRED_PKGS[@]}"; do
+    if ! dpkg-query -W -f='${db:Status-Status}' "${pkg}" 2>/dev/null | grep -q '^installed$'; then
+        MISSING_PKGS+=("${pkg}")
+    fi
+done
+
+if [[ ${#MISSING_PKGS[@]} -eq 0 ]]; then
+    echo "      All required packages are already installed."
+else
+    echo "      Installing missing packages: ${MISSING_PKGS[*]}"
+    apt-get update -qq
+    apt-get install -y "${MISSING_PKGS[@]}"
+fi
 echo "      Done."
 
 # ── 2. Kiosk OS user ───────────────────────────────────────────────────────
