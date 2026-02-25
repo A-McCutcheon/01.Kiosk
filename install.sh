@@ -40,7 +40,7 @@ echo ""
 
 # ── 1. Packages ────────────────────────────────────────────────────────────
 echo "[1/7] Checking required packages…"
-REQUIRED_PKGS=(chromium-browser python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager)
+REQUIRED_PKGS=(chromium-browser python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager python3-pip python3-setuptools)
 MISSING_PKGS=()
 for pkg in "${REQUIRED_PKGS[@]}"; do
     if ! dpkg-query -W -f='${db:Status-Status}' "${pkg}" 2>/dev/null | grep -q '^installed$'; then
@@ -150,6 +150,9 @@ cp -r "${SCRIPT_DIR}/components/kiosk/" "${INSTALL_DIR}/kiosk-config"
 chmod +x "${INSTALL_DIR}/kiosk-launch.sh"
 chmod +x "${INSTALL_DIR}/kiosk-break.sh"
 chmod +x "${INSTALL_DIR}/kiosk-config/config_app.py"
+# Install kiosk-config as a Python package so it is available system-wide
+pip3 install --break-system-packages "${SCRIPT_DIR}/components/kiosk/" 2>/dev/null || \
+    pip3 install "${SCRIPT_DIR}/components/kiosk/"
 echo "      Done."
 
 # ── 6. GNOME autostart ─────────────────────────────────────────────────────

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kiosk-config"
+version = "1.0.0"
+description = "GTK3 configuration application for the kiosk system"
+requires-python = ">=3.8"
+
+[project.scripts]
+kiosk-config = "config_app:main"
+
+[tool.setuptools]
+py-modules = ["config_app"]
