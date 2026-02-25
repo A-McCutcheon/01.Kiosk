@@ -27,8 +27,9 @@ an operator configuration app for network settings and URL management.
 ├── uninstall.sh            # Removes the installation
 ├── kiosk-launch.sh         # Launches Chromium in kiosk mode (or config app if no URL set)
 ├── kiosk-break.sh          # Kills the browser and reopens the config app
-├── kiosk-config/
-│   └── config_app.py       # GTK 3 configuration application
+├── components/
+│   └── kiosk/              # Kiosk component (git submodule)
+│       └── config_app.py   # GTK 3 configuration application
 ├── autostart/
 │   └── kiosk.desktop       # GNOME autostart entry installed for the kiosk user
 ├── LICENSE                 # MIT license (covers the code in this repository)

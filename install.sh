@@ -137,10 +137,16 @@ echo "      Wrote ${SUDOERS_FILE}"
 
 # ── 5. Install kiosk scripts ────────────────────────────────────────────────
 echo "[5/7] Installing kiosk scripts to ${INSTALL_DIR}…"
+
+# Initialise git submodules so the kiosk component in components/kiosk/ is present
+if git -C "${SCRIPT_DIR}" rev-parse --is-inside-work-tree &>/dev/null; then
+    git -C "${SCRIPT_DIR}" submodule update --init --recursive
+fi
+
 mkdir -p "${INSTALL_DIR}"
 cp "${SCRIPT_DIR}/kiosk-launch.sh"  "${INSTALL_DIR}/"
 cp "${SCRIPT_DIR}/kiosk-break.sh"   "${INSTALL_DIR}/"
-cp -r "${SCRIPT_DIR}/kiosk-config/" "${INSTALL_DIR}/"
+cp -r "${SCRIPT_DIR}/components/kiosk/" "${INSTALL_DIR}/kiosk-config"
 chmod +x "${INSTALL_DIR}/kiosk-launch.sh"
 chmod +x "${INSTALL_DIR}/kiosk-break.sh"
 chmod +x "${INSTALL_DIR}/kiosk-config/config_app.py"
