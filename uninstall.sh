@@ -60,13 +60,16 @@ conf = sys.argv[1]
 config = configparser.RawConfigParser()
 config.optionxform = str
 config.read(conf)
+modified = False
 if config.has_section('daemon'):
     config.set('daemon', 'AutomaticLoginEnable', 'false')
     for key in ('AutomaticLogin', 'WaylandEnable'):
         if config.has_option('daemon', key):
             config.remove_option('daemon', key)
-with open(conf, 'w') as f:
-    config.write(f)
+    modified = True
+if modified:
+    with open(conf, 'w') as f:
+        config.write(f)
 PYEOF
     echo "      Disabled GDM3 auto-login."
 elif [[ -f /etc/lightdm/lightdm.conf ]]; then

@@ -30,7 +30,9 @@ else
         && _ok  "AutomaticLoginEnable=true" \
         || _fail "AutomaticLoginEnable not set to true in /etc/gdm3/custom.conf"
 
-    grep -qE "^\s*AutomaticLogin\s*=\s*${KIOSK_USER}" /etc/gdm3/custom.conf \
+    # Use fixed-string match to avoid treating the username as a regex pattern.
+    grep -qF "AutomaticLogin = ${KIOSK_USER}" /etc/gdm3/custom.conf \
+        || grep -qF "AutomaticLogin=${KIOSK_USER}" /etc/gdm3/custom.conf \
         && _ok  "AutomaticLogin=${KIOSK_USER}" \
         || _fail "AutomaticLogin not set to '${KIOSK_USER}' in /etc/gdm3/custom.conf"
 
@@ -40,8 +42,11 @@ else
 
     echo ""
     echo "  Full [daemon] section of /etc/gdm3/custom.conf:"
-    sed -n '/^\[daemon\]/,/^\[/{/^\[daemon\]/d;/^\[/d;p}' \
-        /etc/gdm3/custom.conf | sed 's/^/    /'
+    awk '
+        /^\[daemon\]/ { in_daemon = 1; next }
+        /^\[/ && in_daemon { exit }
+        in_daemon { print "    " $0 }
+    ' /etc/gdm3/custom.conf
 fi
 echo ""
 

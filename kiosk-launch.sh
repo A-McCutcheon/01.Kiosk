@@ -84,23 +84,37 @@ trap '_cleanup' EXIT
 # On GNOME X11, --start-fullscreen sends _NET_WM_STATE_FULLSCREEN before GNOME
 # Shell finishes placing its top panel and dock, so Mutter processes the hint
 # before the panel struts are registered and Chromium ends up covering only the
-# work area.  A background helper waits for GNOME Shell to settle, then
-# re-applies the fullscreen hint on the active (Chromium) window so that Mutter
-# covers all panels.  The dconf 02-kiosk-dock setting also makes the dock
-# autohide whenever any fullscreen window is present.
+# work area.  A background helper polls until the Chromium X11 window appears,
+# then waits for GNOME Shell to settle, and re-applies the fullscreen hint to
+# all Chromium browser windows so that Mutter covers all panels.  The dconf
+# 02-kiosk-dock setting also makes the dock autohide whenever any fullscreen
+# window is present.
 if command -v xdotool &>/dev/null; then
-    # GNOME_SETTLE_SECS: time to wait after Chromium starts for GNOME Shell to
-    # finish registering its panel/dock struts before we re-send the fullscreen
-    # hint.  3 s is sufficient on most hardware and VirtualBox guests.
-    GNOME_SETTLE_SECS=3
-    (sleep "${GNOME_SETTLE_SECS}"
-     # Search for all top-level windows whose WM_CLASS contains "chromium" and
-     # apply _NET_WM_STATE_FULLSCREEN to each one.  Searching by class name is
-     # more reliable than getactivewindow: the kiosk-exit-overlay button is
-     # always-on-top so it holds focus, causing getactivewindow to return the
-     # overlay window rather than the Chromium main window.  Internal Chromium
-     # helper processes (GPU, renderer, crash handler) do not create top-level
-     # X windows and are therefore not returned by this search.
+    # GNOME_SETTLE_SECS: additional time to wait *after* the Chromium window
+    # appears for GNOME Shell to finish registering its panel/dock struts before
+    # re-sending the fullscreen hint.
+    GNOME_SETTLE_SECS=2
+    # POLL_INTERVAL_SECS: how often (in seconds) to check whether the Chromium
+    # window has appeared yet.  1 s is a reasonable balance between
+    # responsiveness and CPU usage on low-spec VirtualBox guests.
+    POLL_INTERVAL_SECS=1
+    (# Poll until a top-level Chromium window appears in the X11 window tree
+     # (up to 30 s in case Chromium is slow to start on this hardware/VM).
+     # A fixed sleep is unreliable: on slower guests the window may not exist
+     # yet when the sleep expires, so xdotool search returns zero results and
+     # the chained windowstate command applies to nothing.
+     waited=0
+     while [[ $waited -lt 30 ]]; do
+         xdotool search --classname chromium &>/dev/null && break
+         sleep "${POLL_INTERVAL_SECS}"
+         (( waited++ )) || true
+     done
+     sleep "${GNOME_SETTLE_SECS}"
+     # Apply _NET_WM_STATE_FULLSCREEN to all top-level Chromium browser windows.
+     # Searching by class name is more reliable than getactivewindow: the
+     # kiosk-exit-overlay button is always-on-top so it holds X11 focus.
+     # Internal Chromium helper processes (GPU, renderer, crash handler) do not
+     # create top-level X windows and are not returned by this search.
      xdotool search --classname chromium windowstate --add FULLSCREEN \
          2>/dev/null || true) &
     FULLSCREEN_PID=$!
