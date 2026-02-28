@@ -5,6 +5,13 @@ kiosk-exit-overlay.py
 Displays a small, always-on-top "Exit Kiosk" button in the bottom-right
 corner of the screen while the kiosk browser is running.
 
+Usage: kiosk-exit-overlay.py [CHROMIUM_PID]
+
+When CHROMIUM_PID is supplied the overlay stays hidden until Chromium's
+window is detected on screen (via xdotool), ensuring the button always
+appears on top of the kiosk window.  The button also kills that exact PID
+on click, avoiding any risk of killing the wrong process.
+
 Tapping or clicking the button invokes kiosk-break.sh, which closes the
 browser and reopens the configuration app.  This provides a break-out
 method for touchscreen displays and for VirtualBox environments where
@@ -17,7 +24,9 @@ gi.require_version('Gdk', '3.0')
 from gi.repository import Gtk, Gdk, GLib
 
 import os
+import signal
 import subprocess
+import sys
 
 # Locate kiosk-break.sh relative to this file, falling back to /opt/kiosk
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -31,12 +40,15 @@ _MARGIN   = 10
 # Milliseconds to wait after the 'map' signal before calling move(), giving the
 # window manager time to complete its initial window placement.
 _WM_SETTLE_MS = 100
+# Milliseconds between polls while waiting for Chromium's window to appear.
+_CHROMIUM_POLL_MS = 500
 
 
 class ExitOverlay(Gtk.Window):
 
-    def __init__(self):
+    def __init__(self, chromium_pid=None):
         super().__init__()
+        self._chromium_pid = chromium_pid
 
         # DOCK-type windows sit in the "dock" stacking layer which the X11/EWMH
         # spec places above fullscreen windows.  This ensures the button remains
@@ -85,17 +97,73 @@ class ExitOverlay(Gtk.Window):
                 gdk_win.raise_()
         return True  # repeat
 
+    def _chromium_window_visible(self):
+        """
+        Return True if Chromium's window is on screen,
+               False if not yet visible,
+               None if the process has already exited.
+        """
+        if self._chromium_pid is None:
+            return True
+        # Verify the process is still alive
+        try:
+            os.kill(self._chromium_pid, 0)
+        except (ProcessLookupError, PermissionError):
+            return None  # process gone
+        # Use xdotool to confirm the window is mapped and visible
+        try:
+            result = subprocess.run(
+                ['xdotool', 'search', '--pid', str(self._chromium_pid)],
+                capture_output=True, timeout=1,
+            )
+            return result.returncode == 0 and bool(result.stdout.strip())
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            # xdotool not available; treat alive process as ready
+            return True
+
+    def _poll_for_chromium(self):
+        """
+        Called every _CHROMIUM_POLL_MS ms.  Shows the overlay once Chromium's
+        window is on screen; quits if the process has already gone.
+        """
+        status = self._chromium_window_visible()
+        if status is None:
+            # Chromium exited before we showed — nothing to do
+            Gtk.main_quit()
+            return False
+        if status:
+            self.show_all()
+            GLib.timeout_add(1000, self._keep_on_top)
+            return False  # stop polling
+        return True  # keep polling
+
     def _on_exit(self, _btn):
         self.hide()
+        # Kill the tracked Chromium process directly by PID
+        if self._chromium_pid is not None:
+            try:
+                os.kill(self._chromium_pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
         subprocess.Popen(['/bin/bash', BREAK_SCRIPT])
         Gtk.main_quit()
 
 
 def main():
-    overlay = ExitOverlay()
-    overlay.show_all()
-    # Re-raise every 1000 ms so the button stays above Chromium's kiosk window
-    GLib.timeout_add(1000, overlay._keep_on_top)
+    chromium_pid = None
+    if len(sys.argv) > 1:
+        try:
+            chromium_pid = int(sys.argv[1])
+        except ValueError:
+            pass
+
+    overlay = ExitOverlay(chromium_pid=chromium_pid)
+    if chromium_pid is not None:
+        # Stay hidden until Chromium's window is on screen
+        GLib.timeout_add(_CHROMIUM_POLL_MS, overlay._poll_for_chromium)
+    else:
+        overlay.show_all()
+        GLib.timeout_add(1000, overlay._keep_on_top)
     Gtk.main()
 
 

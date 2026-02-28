@@ -69,19 +69,17 @@ fi
     "${URL}" &
 CHROMIUM_PID=$!
 
-# ── Wait for Chromium to open its kiosk window, then start the overlay ─────
-# Poll up to 15 s (1 s intervals) for the Chromium process to be running,
-# then add an extra pause for the kiosk window to go fullscreen.
-_CHROMIUM_FULLSCREEN_DELAY=5
+# ── Wait for Chromium process to start, then launch the overlay ───────────
+# The overlay itself polls (via xdotool) until Chromium's window is on
+# screen before showing, so no fixed fullscreen-settle sleep is needed here.
 for _i in $(seq 1 15); do
     kill -0 "${CHROMIUM_PID}" 2>/dev/null && break || true
     sleep 1
 done
-sleep "${_CHROMIUM_FULLSCREEN_DELAY}"
 
 OVERLAY_PID=""
 if [[ -f "${EXIT_OVERLAY}" ]]; then
-    python3 "${EXIT_OVERLAY}" &
+    python3 "${EXIT_OVERLAY}" "${CHROMIUM_PID}" &
     OVERLAY_PID=$!
 fi
 
