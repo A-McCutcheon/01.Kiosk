@@ -62,7 +62,8 @@ echo "      Done."
 echo "[2/6] Setting up OS user '${KIOSK_USER}'…"
 if ! id "${KIOSK_USER}" &>/dev/null; then
     useradd -m -s /bin/bash -c "Kiosk User" "${KIOSK_USER}"
-    # Lock the password – the account is access-controlled via auto-login only
+    # Lock the password – the account should only be accessed via display manager
+    # autologin (configured separately outside this script).
     passwd -l "${KIOSK_USER}"
     echo "      Created locked user: ${KIOSK_USER}"
 else
@@ -149,7 +150,7 @@ echo "╚═══════════════════════�
 echo ""
 echo "  Next steps:"
 echo "  1. Reboot the machine."
-echo "  2. Log in as '${KIOSK_USER}'."
+echo "  2. Configure autologin for '${KIOSK_USER}' in your display manager, then reboot."
 echo "  3. Enter the website URL and click 'Launch Kiosk'."
 echo "  4. Press Ctrl+Alt+C at any time to return to the config app."
 echo "     Or tap/click the on-screen '⚙ Exit' button (bottom-right corner)."
