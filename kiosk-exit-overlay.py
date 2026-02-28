@@ -110,13 +110,21 @@ class ExitOverlay(Gtk.Window):
             os.kill(self._chromium_pid, 0)
         except (ProcessLookupError, PermissionError):
             return None  # process gone
-        # Use xdotool to confirm the window is mapped and visible
+        # Use xdotool to confirm the window is mapped and visible.
+        # Chromium's UI window belongs to a child renderer process, not the
+        # launcher PID, so --pid never matches the kiosk window.  We search
+        # by window class name instead.  The preceding os.kill(pid, 0) check
+        # ensures our Chromium launcher is alive; on a dedicated kiosk there
+        # is only ever one Chromium instance, so class-name matching is safe.
         try:
-            result = subprocess.run(
-                ['xdotool', 'search', '--pid', str(self._chromium_pid)],
-                capture_output=True, timeout=1,
-            )
-            return result.returncode == 0 and bool(result.stdout.strip())
+            for classname in ('chromium', 'chromium-browser'):
+                result = subprocess.run(
+                    ['xdotool', 'search', '--onlyvisible', '--classname', classname],
+                    capture_output=True, timeout=2,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return True
+            return False
         except (FileNotFoundError, subprocess.TimeoutExpired):
             # xdotool not available; treat alive process as ready
             return True
