@@ -38,8 +38,10 @@ class ExitOverlay(Gtk.Window):
     def __init__(self):
         super().__init__()
 
-        # Floating notification-style window: no taskbar entry
-        self.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
+        # DOCK-type windows sit in the "dock" stacking layer which the X11/EWMH
+        # spec places above fullscreen windows.  This ensures the button remains
+        # visible on top of Chromium's --kiosk fullscreen window.
+        self.set_type_hint(Gdk.WindowTypeHint.DOCK)
         self.set_decorated(False)
         self.set_resizable(False)
         self.set_skip_taskbar_hint(True)

@@ -72,7 +72,7 @@ CHROMIUM_PID=$!
 # ── Wait for Chromium to open its kiosk window, then start the overlay ─────
 # Poll up to 15 s (1 s intervals) for the Chromium process to be running,
 # then add an extra pause for the kiosk window to go fullscreen.
-_CHROMIUM_FULLSCREEN_DELAY=3
+_CHROMIUM_FULLSCREEN_DELAY=5
 for _i in $(seq 1 15); do
     kill -0 "${CHROMIUM_PID}" 2>/dev/null && break || true
     sleep 1
