@@ -105,7 +105,7 @@ if command -v xdotool &>/dev/null; then
      # the chained windowstate command applies to nothing.
      waited=0
      while [[ $waited -lt 30 ]]; do
-         xdotool search --classname chromium &>/dev/null && break
+         xdotool search --classname chromium &>/dev/null && break || true
          sleep "${POLL_INTERVAL_SECS}"
          (( waited++ )) || true
      done
