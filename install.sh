@@ -79,37 +79,27 @@ configure_gdm3() {
     local user="$1"
     local conf="/etc/gdm3/custom.conf"
     python3 - "${user}" "${conf}" <<'PYEOF'
-import sys, re
+import sys
+import configparser
 
 user, conf = sys.argv[1], sys.argv[2]
-with open(conf) as f:
-    text = f.read()
 
-# Enable AutomaticLogin under [daemon]
-if re.search(r'AutomaticLoginEnable', text):
-    text = re.sub(r'#?\s*AutomaticLoginEnable\s*=.*',
-                  'AutomaticLoginEnable=true', text)
-else:
-    text = text.replace('[daemon]', '[daemon]\nAutomaticLoginEnable=true', 1)
+config = configparser.RawConfigParser()
+config.optionxform = str  # preserve key case (GDM3 is case-sensitive)
+config.read(conf)
 
-if re.search(r'AutomaticLogin\b', text):
-    text = re.sub(r'#?\s*AutomaticLogin\s*=.*',
-                  f'AutomaticLogin={user}', text)
-else:
-    text = text.replace('AutomaticLoginEnable=true',
-                        f'AutomaticLoginEnable=true\nAutomaticLogin={user}', 1)
+if not config.has_section('daemon'):
+    config.add_section('daemon')
 
+config.set('daemon', 'AutomaticLoginEnable', 'true')
+config.set('daemon', 'AutomaticLogin', user)
 # Disable Wayland so the autologin session uses X11 (required in VMs such as
 # VirtualBox where Wayland is unavailable; also prevents session crashes on
 # hardware without working Wayland drivers).
-if re.search(r'^\s*#?\s*WaylandEnable\s*=', text, re.MULTILINE):
-    text = re.sub(r'^\s*#?\s*WaylandEnable\s*=.*', 'WaylandEnable=false',
-                  text, flags=re.MULTILINE)
-else:
-    text = re.sub(r'(\[daemon\])', r'\1\nWaylandEnable=false', text, count=1)
+config.set('daemon', 'WaylandEnable', 'false')
 
 with open(conf, 'w') as f:
-    f.write(text)
+    config.write(f)
 PYEOF
 }
 

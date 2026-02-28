@@ -53,11 +53,21 @@ echo "      Done."
 # 5. Disable auto-login
 echo "[5/5] Disabling automatic login…"
 if [[ -f /etc/gdm3/custom.conf ]]; then
-    sed -i \
-        -e 's/^AutomaticLoginEnable=true/AutomaticLoginEnable=false/' \
-        -e "s/^AutomaticLogin=${KIOSK_USER}/# AutomaticLogin=/" \
-        -e '/^WaylandEnable=false$/d' \
-        /etc/gdm3/custom.conf
+    python3 - /etc/gdm3/custom.conf <<'PYEOF'
+import sys
+import configparser
+conf = sys.argv[1]
+config = configparser.RawConfigParser()
+config.optionxform = str
+config.read(conf)
+if config.has_section('daemon'):
+    config.set('daemon', 'AutomaticLoginEnable', 'false')
+    for key in ('AutomaticLogin', 'WaylandEnable'):
+        if config.has_option('daemon', key):
+            config.remove_option('daemon', key)
+with open(conf, 'w') as f:
+    config.write(f)
+PYEOF
     echo "      Disabled GDM3 auto-login."
 elif [[ -f /etc/lightdm/lightdm.conf ]]; then
     sed -i \
