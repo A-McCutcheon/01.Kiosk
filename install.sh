@@ -18,6 +18,8 @@
 #  5. Copies the kiosk scripts to /opt/kiosk
 #  6. Configures GNOME autostart so the kiosk launcher runs on login
 #  7. Registers Ctrl+Alt+C as a GNOME shortcut to break out of kiosk mode
+#     and installs a persistent on-screen overlay button for touchscreens
+#     and VirtualBox environments
 
 set -euo pipefail
 
@@ -138,11 +140,13 @@ echo "      Wrote ${SUDOERS_FILE}"
 # ── 5. Install kiosk scripts ────────────────────────────────────────────────
 echo "[5/7] Installing kiosk scripts to ${INSTALL_DIR}…"
 mkdir -p "${INSTALL_DIR}"
-cp "${SCRIPT_DIR}/kiosk-launch.sh"  "${INSTALL_DIR}/"
-cp "${SCRIPT_DIR}/kiosk-break.sh"   "${INSTALL_DIR}/"
-cp -r "${SCRIPT_DIR}/kiosk-config/" "${INSTALL_DIR}/"
+cp "${SCRIPT_DIR}/kiosk-launch.sh"        "${INSTALL_DIR}/"
+cp "${SCRIPT_DIR}/kiosk-break.sh"         "${INSTALL_DIR}/"
+cp "${SCRIPT_DIR}/kiosk-exit-overlay.py"  "${INSTALL_DIR}/"
+cp -r "${SCRIPT_DIR}/kiosk-config/"       "${INSTALL_DIR}/"
 chmod +x "${INSTALL_DIR}/kiosk-launch.sh"
 chmod +x "${INSTALL_DIR}/kiosk-break.sh"
+chmod +x "${INSTALL_DIR}/kiosk-exit-overlay.py"
 chmod +x "${INSTALL_DIR}/kiosk-config/config_app.py"
 echo "      Done."
 
@@ -199,4 +203,5 @@ echo "  1. Reboot the machine."
 echo "  2. It will auto-login as '${KIOSK_USER}' and open the config app."
 echo "  3. Enter the website URL and click 'Launch Kiosk'."
 echo "  4. Press Ctrl+Alt+C at any time to return to the config app."
+echo "     Or tap/click the on-screen '⚙ Exit' button (bottom-right corner)."
 echo ""
