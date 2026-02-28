@@ -99,6 +99,15 @@ else:
     text = text.replace('AutomaticLoginEnable=true',
                         f'AutomaticLoginEnable=true\nAutomaticLogin={user}', 1)
 
+# Disable Wayland so the autologin session uses X11 (required in VMs such as
+# VirtualBox where Wayland is unavailable; also prevents session crashes on
+# hardware without working Wayland drivers).
+if re.search(r'^\s*#?\s*WaylandEnable\s*=', text, re.MULTILINE):
+    text = re.sub(r'^\s*#?\s*WaylandEnable\s*=.*', 'WaylandEnable=false',
+                  text, flags=re.MULTILINE)
+else:
+    text = re.sub(r'(\[daemon\])', r'\1\nWaylandEnable=false', text, count=1)
+
 with open(conf, 'w') as f:
     f.write(text)
 PYEOF
@@ -158,6 +167,10 @@ echo "[6/7] Configuring GNOME autostart…"
 AUTOSTART_DIR="${KIOSK_HOME}/.config/autostart"
 mkdir -p "${AUTOSTART_DIR}"
 cp "${SCRIPT_DIR}/autostart/kiosk.desktop" "${AUTOSTART_DIR}/"
+# Suppress the GNOME first-run wizard: if this marker is absent, GDM3 launches
+# gnome-initial-setup for new accounts instead of the normal session, which
+# prevents the kiosk autostart from running on the very first login.
+touch "${KIOSK_HOME}/.config/gnome-initial-setup-done"
 chown -R "${KIOSK_USER}:${KIOSK_USER}" "${KIOSK_HOME}/.config"
 echo "      Wrote ${AUTOSTART_DIR}/kiosk.desktop"
 

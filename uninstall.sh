@@ -56,6 +56,7 @@ if [[ -f /etc/gdm3/custom.conf ]]; then
     sed -i \
         -e 's/^AutomaticLoginEnable=true/AutomaticLoginEnable=false/' \
         -e "s/^AutomaticLogin=${KIOSK_USER}/# AutomaticLogin=/" \
+        -e '/^WaylandEnable=false$/d' \
         /etc/gdm3/custom.conf
     echo "      Disabled GDM3 auto-login."
 elif [[ -f /etc/lightdm/lightdm.conf ]]; then
