@@ -57,23 +57,22 @@ fi
 # invokes kiosk-break.sh.  The process is cleaned up automatically when
 # this script exits (via the trap below).
 OVERLAY_PID=""
+XDOTOOL_PID=""
 if [[ -f "${EXIT_OVERLAY}" ]]; then
     python3 "${EXIT_OVERLAY}" &
     OVERLAY_PID=$!
 fi
 
 _cleanup_overlay() {
-    [[ -n "${OVERLAY_PID}" ]] && kill "${OVERLAY_PID}" 2>/dev/null || true
+    [[ -n "${OVERLAY_PID}" ]]  && kill "${OVERLAY_PID}"  2>/dev/null || true
+    [[ -n "${XDOTOOL_PID}" ]]  && kill "${XDOTOOL_PID}"  2>/dev/null || true
 }
 trap '_cleanup_overlay' EXIT
 
 # ── Launch in kiosk mode ────────────────────────────────────────────────────
 # Flags explained:
 #   --kiosk               removes all UI chrome (address bar, menus, exit button)
-#   --start-fullscreen    tells the X11/Wayland compositor to render the window
-#                         fullscreen from first paint; required on GNOME X11
-#                         sessions where --kiosk alone does not trigger the WM
-#                         fullscreen hint
+#   --start-fullscreen    requests fullscreen from first paint
 #   --user-data-dir       dedicated clean profile directory; prevents any saved
 #                         window state from a previous Chromium session
 #                         (e.g. ~/.config/chromium) overriding --kiosk mode
@@ -93,8 +92,23 @@ trap '_cleanup_overlay' EXIT
     --disable-session-crashed-bubble \
     --noerrdialogs \
     --incognito \
-    --window-position=0,0 \
-    "${URL}" || true
+    "${URL}" &
+BROWSER_PID=$!
+
+# On GNOME X11 sessions, --start-fullscreen may not cover the top panel and
+# dock because the WM processes the hint before GNOME Shell layout settles.
+# Wait for the Chromium window to map, then explicitly add
+# _NET_WM_STATE_FULLSCREEN via xdotool so Mutter covers all panels.
+if command -v xdotool &>/dev/null; then
+    (timeout 30 xdotool search --pid "${BROWSER_PID}" --sync \
+        windowstate --add FULLSCREEN 2>/dev/null || true) &
+    XDOTOOL_PID=$!
+else
+    echo "WARNING: xdotool not found; GNOME top panel/dock may overlay the kiosk window." >&2
+    echo "         Re-run sudo ./install.sh to install required packages." >&2
+fi
+
+wait "${BROWSER_PID}" || true
 
 # ── When the browser exits, reopen the config app ─────────────────────────
 python3 "${CONFIG_APP}"
