@@ -69,13 +69,18 @@ trap '_cleanup_overlay' EXIT
 
 # ── Launch in kiosk mode ────────────────────────────────────────────────────
 # Flags explained:
-#   --kiosk               full-screen, no address bar, no exit UI
+#   --kiosk               removes all UI chrome (address bar, menus, exit button)
+#   --start-fullscreen    tells the X11/Wayland compositor to render the window
+#                         fullscreen from first paint; required on GNOME X11
+#                         sessions where --kiosk alone does not trigger the WM
+#                         fullscreen hint
 #   --no-first-run        skip first-run wizard
 #   --disable-infobars    suppress info banners
 #   --noerrdialogs        suppress crash dialogs
 #   --incognito           no local browsing history
 "${BROWSER}" \
     --kiosk \
+    --start-fullscreen \
     --no-first-run \
     --disable-infobars \
     --disable-translate \
