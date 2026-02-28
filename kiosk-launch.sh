@@ -52,81 +52,50 @@ if [[ -z "${BROWSER}" ]]; then
     exit 1
 fi
 
+# ── Wait for GNOME Shell to be fully initialized ──────────────────────────
+# With GDM3 autologin, kiosk.desktop fires while GNOME Shell is still
+# starting up.  If Chromium launches before the compositor has placed its
+# panel/dock struts the kiosk fullscreen geometry is incorrect and the
+# window appears decorated (title bar + panels visible).  Polling the
+# D-Bus session service ensures the shell is ready before we proceed.
+# Timeout after 60 s so a broken GNOME session does not block forever.
+if command -v gdbus &>/dev/null; then
+    _shell_wait=0
+    until gdbus introspect --session --dest org.gnome.Shell \
+              --object-path /org/gnome/Shell &>/dev/null; do
+        sleep 1
+        (( _shell_wait++ )) || true
+        [[ $_shell_wait -ge 60 ]] && break
+    done
+fi
+
 # ── Start the exit overlay (touchscreen / VirtualBox mouse support) ────────
 # The overlay shows a small always-on-top button; tapping or clicking it
 # invokes kiosk-break.sh.  The process is cleaned up automatically when
 # this script exits (via the trap below).
 OVERLAY_PID=""
-FULLSCREEN_PID=""
 if [[ -f "${EXIT_OVERLAY}" ]]; then
     python3 "${EXIT_OVERLAY}" &
     OVERLAY_PID=$!
 fi
 
-_cleanup() {
-    [[ -n "${OVERLAY_PID}" ]]   && kill "${OVERLAY_PID}"   2>/dev/null || true
-    [[ -n "${FULLSCREEN_PID}" ]] && kill "${FULLSCREEN_PID}" 2>/dev/null || true
+_cleanup_overlay() {
+    [[ -n "${OVERLAY_PID}" ]] && kill "${OVERLAY_PID}" 2>/dev/null || true
 }
-trap '_cleanup' EXIT
+trap '_cleanup_overlay' EXIT
 
 # ── Launch in kiosk mode ────────────────────────────────────────────────────
 # Flags explained:
-#   --kiosk               removes all UI chrome (address bar, menus, exit button)
-#   --start-fullscreen    requests fullscreen from first paint
-#   --user-data-dir       dedicated clean profile directory; prevents any saved
-#                         window state from a previous Chromium session
-#                         (e.g. ~/.config/chromium) overriding --kiosk mode
+#   --kiosk               full-screen, no address bar, no exit UI
 #   --no-first-run        skip first-run wizard
 #   --disable-infobars    suppress info banners
 #   --noerrdialogs        suppress crash dialogs
 #   --incognito           no local browsing history
-#
-# On GNOME X11, --start-fullscreen sends _NET_WM_STATE_FULLSCREEN before GNOME
-# Shell finishes placing its top panel and dock, so Mutter processes the hint
-# before the panel struts are registered and Chromium ends up covering only the
-# work area.  A background helper polls until the Chromium X11 window appears,
-# then waits for GNOME Shell to settle, and re-applies the fullscreen hint to
-# all Chromium browser windows so that Mutter covers all panels.  The dconf
-# 02-kiosk-dock setting also makes the dock autohide whenever any fullscreen
-# window is present.
-if command -v xdotool &>/dev/null; then
-    # GNOME_SETTLE_SECS: additional time to wait *after* the Chromium window
-    # appears for GNOME Shell to finish registering its panel/dock struts before
-    # re-sending the fullscreen hint.
-    GNOME_SETTLE_SECS=2
-    # POLL_INTERVAL_SECS: how often (in seconds) to check whether the Chromium
-    # window has appeared yet.  1 s is a reasonable balance between
-    # responsiveness and CPU usage on low-spec VirtualBox guests.
-    POLL_INTERVAL_SECS=1
-    (# Poll until a top-level Chromium window appears in the X11 window tree
-     # (up to 30 s in case Chromium is slow to start on this hardware/VM).
-     # A fixed sleep is unreliable: on slower guests the window may not exist
-     # yet when the sleep expires, so xdotool search returns zero results and
-     # the chained windowstate command applies to nothing.
-     waited=0
-     while [[ $waited -lt 30 ]]; do
-         xdotool search --classname chromium &>/dev/null && break || true
-         sleep "${POLL_INTERVAL_SECS}"
-         (( waited++ )) || true
-     done
-     sleep "${GNOME_SETTLE_SECS}"
-     # Apply _NET_WM_STATE_FULLSCREEN to all top-level Chromium browser windows.
-     # Searching by class name is more reliable than getactivewindow: the
-     # kiosk-exit-overlay button is always-on-top so it holds X11 focus.
-     # Internal Chromium helper processes (GPU, renderer, crash handler) do not
-     # create top-level X windows and are not returned by this search.
-     xdotool search --classname chromium windowstate --add FULLSCREEN \
-         2>/dev/null || true) &
-    FULLSCREEN_PID=$!
-else
-    echo "WARNING: xdotool not found; GNOME top panel/dock may overlay the kiosk window." >&2
-    echo "         Re-run sudo ./install.sh to install required packages." >&2
-fi
-
+#   --window-position=0,0 anchor the window at the top-left corner so that
+#                         the initial window position does not flash at a
+#                         random location before fullscreen engages
 "${BROWSER}" \
     --kiosk \
-    --start-fullscreen \
-    --user-data-dir="${HOME}/.config/chromium-kiosk" \
     --no-first-run \
     --disable-infobars \
     --disable-translate \
@@ -135,6 +104,7 @@ fi
     --disable-session-crashed-bubble \
     --noerrdialogs \
     --incognito \
+    --window-position=0,0 \
     "${URL}" || true
 
 # ── When the browser exits, reopen the config app ─────────────────────────
