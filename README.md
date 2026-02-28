@@ -13,6 +13,7 @@ an operator configuration app for network settings and URL management.
 | **Auto login** | Configures GDM3 or LightDM to log in automatically as the kiosk user on boot |
 | **Website launcher** | Opens a configured URL in Chromium kiosk mode (full-screen, no address bar) |
 | **Break-out shortcut** | Press **Ctrl+Alt+C** at any time to close the browser and reopen the config app |
+| **Break-out button** | Tap or click the **⚙ Exit** button (bottom-right corner, always visible) — works on touchscreens and in VirtualBox |
 | **IP / DHCP settings** | GUI to switch any wired or wireless interface between DHCP and static IP |
 | **WiFi management** | Scan for networks, select one, enter a password, and connect |
 | **URL management** | Enter or change the kiosk website and relaunch instantly |
@@ -27,6 +28,7 @@ an operator configuration app for network settings and URL management.
 ├── uninstall.sh            # Removes the installation
 ├── kiosk-launch.sh         # Launches Chromium in kiosk mode (or config app if no URL set)
 ├── kiosk-break.sh          # Kills the browser and reopens the config app
+├── kiosk-exit-overlay.py   # Always-on-top exit button (touchscreen / VirtualBox)
 ├── kiosk-config/
 │   └── config_app.py       # GTK 3 configuration application
 ├── autostart/
@@ -60,7 +62,8 @@ After installation:
 3. The **configuration app** opens on first login (no URL is set yet).
 4. Enter the website URL on the **Website** tab and click **Launch Kiosk**.
 5. Chromium opens full-screen showing the configured site.
-6. Press **Ctrl+Alt+C** at any time to close the browser and return to the config app.
+6. Press **Ctrl+Alt+C** at any time to close the browser and return to the config app.  
+   Alternatively, tap or click the **⚙ Exit** button in the bottom-right corner of the screen.
 
 ---
 
@@ -91,9 +94,16 @@ The config app has three tabs:
 
 ## Break Out of Kiosk Mode
 
-Press **Ctrl+Alt+C** while the kiosk browser is open.  
-This shortcut is registered as a GNOME system shortcut during installation and
-works even when Chromium has keyboard focus.
+There are two ways to exit kiosk mode and return to the configuration app:
+
+1. **On-screen button (touchscreen / VirtualBox)** – Tap or click the **⚙ Exit** button
+   visible in the bottom-right corner of the screen at all times while the kiosk is running.
+   This method works on touchscreen displays and in VirtualBox environments where
+   keyboard shortcuts may be intercepted by the host.
+
+2. **Keyboard shortcut** – Press **Ctrl+Alt+C** while the kiosk browser is open.
+   This shortcut is registered as a GNOME system shortcut during installation and
+   works even when Chromium has keyboard focus.
 
 The browser closes and the configuration app reopens automatically.
 

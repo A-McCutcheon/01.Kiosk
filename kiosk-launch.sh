@@ -13,6 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="${HOME}/.config/kiosk/kiosk.conf"
 CONFIG_APP="${SCRIPT_DIR}/kiosk-config/config_app.py"
+EXIT_OVERLAY="${SCRIPT_DIR}/kiosk-exit-overlay.py"
 
 # ── Read URL from JSON config ──────────────────────────────────────────────
 URL=""
@@ -50,6 +51,21 @@ if [[ -z "${BROWSER}" ]]; then
     python3 "${CONFIG_APP}"
     exit 1
 fi
+
+# ── Start the exit overlay (touchscreen / VirtualBox mouse support) ────────
+# The overlay shows a small always-on-top button; tapping or clicking it
+# invokes kiosk-break.sh.  The process is cleaned up automatically when
+# this script exits (via the trap below).
+OVERLAY_PID=""
+if [[ -f "${EXIT_OVERLAY}" ]]; then
+    python3 "${EXIT_OVERLAY}" &
+    OVERLAY_PID=$!
+fi
+
+_cleanup_overlay() {
+    [[ -n "${OVERLAY_PID}" ]] && kill "${OVERLAY_PID}" 2>/dev/null || true
+}
+trap '_cleanup_overlay' EXIT
 
 # ── Launch in kiosk mode ────────────────────────────────────────────────────
 # Flags explained:
