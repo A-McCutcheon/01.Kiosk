@@ -13,13 +13,12 @@
 # ─────────────────────
 #  1. Installs required packages (Chromium, Python 3 + GTK bindings)
 #  2. Creates the kiosk OS user with a locked password
-#  3. Configures automatic login via GDM3 or LightDM
-#  4. Grants the kiosk user password-less nmcli access (sudoers)
-#  5. Copies the kiosk scripts to /opt/kiosk
-#  6. Configures GNOME autostart so the kiosk launcher runs on login
-#  7. Registers Ctrl+Alt+C as a GNOME shortcut to break out of kiosk mode,
-#     installs a persistent on-screen overlay button for touchscreens and
-#     VirtualBox environments, and disables screen lock / screen blanking
+#  3. Grants the kiosk user password-less nmcli access (sudoers)
+#  4. Copies the kiosk scripts to /opt/kiosk
+#  5. Configures GNOME autostart so the kiosk launcher runs on login
+#  6. Registers Ctrl+Alt+C as a GNOME shortcut to break out of kiosk mode
+#     and installs a persistent on-screen overlay button for touchscreens
+#     and VirtualBox environments
 
 set -euo pipefail
 
@@ -41,8 +40,8 @@ echo "  Install dir : ${INSTALL_DIR}"
 echo ""
 
 # ── 1. Packages ────────────────────────────────────────────────────────────
-echo "[1/7] Checking required packages…"
-REQUIRED_PKGS=(chromium-browser python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager xdotool)
+echo "[1/6] Checking required packages…"
+REQUIRED_PKGS=(chromium-browser python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager)
 MISSING_PKGS=()
 for pkg in "${REQUIRED_PKGS[@]}"; do
     if ! dpkg-query -W -f='${db:Status-Status}' "${pkg}" 2>/dev/null | grep -q '^installed$'; then
@@ -60,7 +59,7 @@ fi
 echo "      Done."
 
 # ── 2. Kiosk OS user ───────────────────────────────────────────────────────
-echo "[2/7] Setting up OS user '${KIOSK_USER}'…"
+echo "[2/6] Setting up OS user '${KIOSK_USER}'…"
 if ! id "${KIOSK_USER}" &>/dev/null; then
     useradd -m -s /bin/bash -c "Kiosk User" "${KIOSK_USER}"
     # Lock the password – the account is access-controlled via auto-login only
@@ -72,66 +71,8 @@ fi
 
 KIOSK_HOME="$(getent passwd "${KIOSK_USER}" | cut -d: -f6)"
 
-# ── 3. Auto-login ──────────────────────────────────────────────────────────
-echo "[3/7] Configuring automatic login…"
-
-configure_gdm3() {
-    local user="$1"
-    local conf="/etc/gdm3/custom.conf"
-    python3 - "${user}" "${conf}" <<'PYEOF'
-import sys
-import configparser
-
-user, conf = sys.argv[1], sys.argv[2]
-
-config = configparser.RawConfigParser()
-config.optionxform = str  # preserve key case (GDM3 is case-sensitive)
-config.read(conf)
-
-if not config.has_section('daemon'):
-    config.add_section('daemon')
-
-config.set('daemon', 'AutomaticLoginEnable', 'true')
-config.set('daemon', 'AutomaticLogin', user)
-# Disable Wayland so the autologin session uses X11 (required in VMs such as
-# VirtualBox where Wayland is unavailable; also prevents session crashes on
-# hardware without working Wayland drivers).
-config.set('daemon', 'WaylandEnable', 'false')
-
-with open(conf, 'w') as f:
-    config.write(f)
-PYEOF
-}
-
-configure_lightdm() {
-    local user="$1"
-    local conf="/etc/lightdm/lightdm.conf"
-    sed -i \
-        -e "s|#\?autologin-user=.*|autologin-user=${user}|" \
-        -e "s|#\?autologin-user-timeout=.*|autologin-user-timeout=0|" \
-        "${conf}"
-}
-
-if [[ -f /etc/gdm3/custom.conf ]]; then
-    configure_gdm3 "${KIOSK_USER}"
-    echo "      Configured GDM3 auto-login."
-    echo "      Verification (grep of /etc/gdm3/custom.conf):"
-    grep -E '^\s*(AutomaticLoginEnable|AutomaticLogin|WaylandEnable)\s*=' \
-        /etc/gdm3/custom.conf | sed 's/^/        /' \
-        || echo "        WARNING: expected keys not found – check /etc/gdm3/custom.conf"
-elif [[ -f /etc/lightdm/lightdm.conf ]]; then
-    configure_lightdm "${KIOSK_USER}"
-    # LightDM requires the user to be in the autologin group
-    groupadd -f autologin
-    usermod -aG autologin "${KIOSK_USER}"
-    echo "      Configured LightDM auto-login."
-else
-    echo "      WARNING: No supported display manager detected."
-    echo "               Please enable auto-login for '${KIOSK_USER}' manually."
-fi
-
-# ── 4. Sudoers – nmcli without password ────────────────────────────────────
-echo "[4/7] Configuring nmcli sudo privileges…"
+# ── 3. Sudoers – nmcli without password ────────────────────────────────────
+echo "[3/6] Configuring nmcli sudo privileges…"
 SUDOERS_FILE="/etc/sudoers.d/kiosk-nmcli"
 cat > "${SUDOERS_FILE}" <<EOF
 # Allow the kiosk user to manage network connections without a password prompt.
@@ -143,8 +84,8 @@ EOF
 chmod 0440 "${SUDOERS_FILE}"
 echo "      Wrote ${SUDOERS_FILE}"
 
-# ── 5. Install kiosk scripts ────────────────────────────────────────────────
-echo "[5/7] Installing kiosk scripts to ${INSTALL_DIR}…"
+# ── 4. Install kiosk scripts ────────────────────────────────────────────────
+echo "[4/6] Installing kiosk scripts to ${INSTALL_DIR}…"
 mkdir -p "${INSTALL_DIR}"
 cp "${SCRIPT_DIR}/kiosk-launch.sh"        "${INSTALL_DIR}/"
 cp "${SCRIPT_DIR}/kiosk-break.sh"         "${INSTALL_DIR}/"
@@ -158,20 +99,16 @@ chmod +x "${INSTALL_DIR}/kiosk-diag.sh"
 chmod +x "${INSTALL_DIR}/kiosk-config/config_app.py"
 echo "      Done."
 
-# ── 6. GNOME autostart ─────────────────────────────────────────────────────
-echo "[6/7] Configuring GNOME autostart…"
+# ── 5. GNOME autostart ─────────────────────────────────────────────────────
+echo "[5/6] Configuring GNOME autostart…"
 AUTOSTART_DIR="${KIOSK_HOME}/.config/autostart"
 mkdir -p "${AUTOSTART_DIR}"
 cp "${SCRIPT_DIR}/autostart/kiosk.desktop" "${AUTOSTART_DIR}/"
-# Suppress the GNOME first-run wizard: if this marker is absent, GDM3 launches
-# gnome-initial-setup for new accounts instead of the normal session, which
-# prevents the kiosk autostart from running on the very first login.
-touch "${KIOSK_HOME}/.config/gnome-initial-setup-done"
 chown -R "${KIOSK_USER}:${KIOSK_USER}" "${KIOSK_HOME}/.config"
 echo "      Wrote ${AUTOSTART_DIR}/kiosk.desktop"
 
-# ── 7. Ctrl+Alt+C break-out shortcut ──────────────────────────────────────
-echo "[7/7] Registering Ctrl+Alt+C keyboard shortcut…"
+# ── 6. Ctrl+Alt+C break-out shortcut ──────────────────────────────────────
+echo "[6/6] Registering Ctrl+Alt+C keyboard shortcut…"
 # gsettings must run as the target user inside a D-Bus session.
 # At install time there is no live user session, so we write the shortcut
 # into the user's dconf database directly via a profile override file.
@@ -196,45 +133,10 @@ command='/opt/kiosk/kiosk-break.sh'
 binding='<Control><Alt>c'
 EOF
 
-# Database: disable screen lock, screen blanking, and power saving
-cat > "${DCONF_DB_DIR}/01-kiosk-power" <<'EOF'
-[org/gnome/desktop/screensaver]
-lock-enabled=false
-idle-activation-enabled=false
-
-[org/gnome/desktop/session]
-idle-delay=uint32 0
-
-[org/gnome/settings-daemon/plugins/power]
-sleep-inactive-ac-timeout=0
-sleep-inactive-battery-timeout=0
-sleep-inactive-ac-type='nothing'
-sleep-inactive-battery-type='nothing'
-idle-dim=false
-EOF
-
-# Database: configure GNOME dock to auto-hide when any fullscreen window is
-# present.  This ensures the dock slides away once Chromium enters fullscreen
-# mode (via --start-fullscreen or the post-launch xdotool helper), regardless
-# of whether xdotool fires before or after the dock reserves its strut.
-#   dock-fixed=false    allow the dock to autohide (true = always visible)
-#   autohide=true       enable autohide behaviour
-#   intellihide=false   disable per-window dodge (use autohide-in-fullscreen
-#                       instead, which is simpler and more reliable for kiosk)
-#   autohide-in-fullscreen=true  hide whenever any window in the workspace
-#                       has _NET_WM_STATE_FULLSCREEN set
-cat > "${DCONF_DB_DIR}/02-kiosk-dock" <<'EOF'
-[org/gnome/shell/extensions/dash-to-dock]
-dock-fixed=false
-autohide=true
-intellihide=false
-autohide-in-fullscreen=true
-EOF
-
 # Compile the dconf database
 if command -v dconf &>/dev/null; then
     dconf update
-    echo "      Ctrl+Alt+C shortcut registered and screen lock/blanking disabled via dconf."
+    echo "      Ctrl+Alt+C shortcut registered via dconf."
 else
     echo "      WARNING: dconf not found; settings will be applied on first login."
 fi
@@ -247,7 +149,7 @@ echo "╚═══════════════════════�
 echo ""
 echo "  Next steps:"
 echo "  1. Reboot the machine."
-echo "  2. It will auto-login as '${KIOSK_USER}' and open the config app."
+echo "  2. Log in as '${KIOSK_USER}'."
 echo "  3. Enter the website URL and click 'Launch Kiosk'."
 echo "  4. Press Ctrl+Alt+C at any time to return to the config app."
 echo "     Or tap/click the on-screen '⚙ Exit' button (bottom-right corner)."

@@ -52,23 +52,6 @@ if [[ -z "${BROWSER}" ]]; then
     exit 1
 fi
 
-# ── Wait for GNOME Shell to be fully initialized ──────────────────────────
-# With GDM3 autologin, kiosk.desktop fires while GNOME Shell is still
-# starting up.  If Chromium launches before the compositor has placed its
-# panel/dock struts the kiosk fullscreen geometry is incorrect and the
-# window appears decorated (title bar + panels visible).  Polling the
-# D-Bus session service ensures the shell is ready before we proceed.
-# Timeout after 60 s so a broken GNOME session does not block forever.
-if command -v gdbus &>/dev/null; then
-    _shell_wait=0
-    until gdbus introspect --session --dest org.gnome.Shell \
-              --object-path /org/gnome/Shell &>/dev/null; do
-        sleep 1
-        (( _shell_wait++ )) || true
-        [[ $_shell_wait -ge 60 ]] && break
-    done
-fi
-
 # ── Start the exit overlay (touchscreen / VirtualBox mouse support) ────────
 # The overlay shows a small always-on-top button; tapping or clicking it
 # invokes kiosk-break.sh.  The process is cleaned up automatically when
@@ -91,9 +74,6 @@ trap '_cleanup_overlay' EXIT
 #   --disable-infobars    suppress info banners
 #   --noerrdialogs        suppress crash dialogs
 #   --incognito           no local browsing history
-#   --window-position=0,0 anchor the window at the top-left corner so that
-#                         the initial window position does not flash at a
-#                         random location before fullscreen engages
 "${BROWSER}" \
     --kiosk \
     --no-first-run \
