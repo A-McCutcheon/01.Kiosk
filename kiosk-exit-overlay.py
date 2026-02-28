@@ -14,7 +14,7 @@ keyboard shortcuts (Ctrl+Alt+C) may be intercepted by the host.
 import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
-from gi.repository import Gtk, Gdk
+from gi.repository import Gtk, Gdk, GLib
 
 import os
 import subprocess
@@ -55,11 +55,25 @@ class ExitOverlay(Gtk.Window):
         self.connect('realize', self._on_realize)
 
     def _on_realize(self, _widget):
-        """Position the button in the bottom-right corner after realization."""
+        """Defer positioning until the window is fully mapped."""
+        GLib.idle_add(self._position_window)
+
+    def _position_window(self):
+        """Position the button in the bottom-right corner."""
         screen = Gdk.Screen.get_default()
         sw = screen.get_width()
         sh = screen.get_height()
         self.move(sw - _BUTTON_W - _MARGIN, sh - _BUTTON_H - _MARGIN)
+        return False  # one-shot
+
+    def _keep_on_top(self):
+        """Periodically raise the overlay above Chromium's kiosk window."""
+        if self.get_visible():
+            self.set_keep_above(True)
+            gdk_win = self.get_window()
+            if gdk_win:
+                gdk_win.raise_()
+        return True  # repeat
 
     def _on_exit(self, _btn):
         self.hide()
@@ -70,6 +84,8 @@ class ExitOverlay(Gtk.Window):
 def main():
     overlay = ExitOverlay()
     overlay.show_all()
+    # Re-raise every 1000 ms so the button stays above Chromium's kiosk window
+    GLib.timeout_add(1000, overlay._keep_on_top)
     Gtk.main()
 
 
