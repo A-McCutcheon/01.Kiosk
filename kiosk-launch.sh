@@ -52,28 +52,9 @@ if [[ -z "${BROWSER}" ]]; then
     exit 1
 fi
 
-# ── Start the exit overlay (touchscreen / VirtualBox mouse support) ────────
-# The overlay shows a small always-on-top button; tapping or clicking it
-# invokes kiosk-break.sh.  The process is cleaned up automatically when
-# this script exits (via the trap below).
-OVERLAY_PID=""
-if [[ -f "${EXIT_OVERLAY}" ]]; then
-    python3 "${EXIT_OVERLAY}" &
-    OVERLAY_PID=$!
-fi
-
-_cleanup_overlay() {
-    [[ -n "${OVERLAY_PID}" ]] && kill "${OVERLAY_PID}" 2>/dev/null || true
-}
-trap '_cleanup_overlay' EXIT
-
-# ── Launch in kiosk mode ────────────────────────────────────────────────────
-# Flags explained:
-#   --kiosk               full-screen, no address bar, no exit UI
-#   --no-first-run        skip first-run wizard
-#   --disable-infobars    suppress info banners
-#   --noerrdialogs        suppress crash dialogs
-#   --incognito           no local browsing history
+# ── Launch Chromium in background ──────────────────────────────────────────
+# Running in background lets us start the overlay after Chromium's kiosk
+# window has appeared, so the overlay is visible above it.
 "${BROWSER}" \
     --kiosk \
     --no-first-run \
@@ -85,7 +66,32 @@ trap '_cleanup_overlay' EXIT
     --noerrdialogs \
     --incognito \
     --window-position=0,0 \
-    "${URL}" || true
+    "${URL}" &
+CHROMIUM_PID=$!
+
+# ── Wait for Chromium to open its kiosk window, then start the overlay ─────
+# Poll up to 15 s (1 s intervals) for the Chromium process to be running,
+# then add an extra pause for the kiosk window to go fullscreen.
+_CHROMIUM_FULLSCREEN_DELAY=3
+for _i in $(seq 1 15); do
+    kill -0 "${CHROMIUM_PID}" 2>/dev/null && break || true
+    sleep 1
+done
+sleep "${_CHROMIUM_FULLSCREEN_DELAY}"
+
+OVERLAY_PID=""
+if [[ -f "${EXIT_OVERLAY}" ]]; then
+    python3 "${EXIT_OVERLAY}" &
+    OVERLAY_PID=$!
+fi
+
+_cleanup_overlay() {
+    [[ -n "${OVERLAY_PID}" ]] && kill "${OVERLAY_PID}" 2>/dev/null || true
+}
+trap '_cleanup_overlay' EXIT
+
+# Keep this script alive until Chromium exits
+wait "${CHROMIUM_PID}" || true
 
 # ── When the browser exits, reopen the config app ─────────────────────────
 python3 "${CONFIG_APP}"

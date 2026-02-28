@@ -28,6 +28,9 @@ if not os.path.isfile(BREAK_SCRIPT):
 _BUTTON_W = 90
 _BUTTON_H = 50
 _MARGIN   = 10
+# Milliseconds to wait after the 'map' signal before calling move(), giving the
+# window manager time to complete its initial window placement.
+_WM_SETTLE_MS = 100
 
 
 class ExitOverlay(Gtk.Window):
@@ -35,9 +38,8 @@ class ExitOverlay(Gtk.Window):
     def __init__(self):
         super().__init__()
 
-        # Floating notification-style window: always on top, no taskbar entry
+        # Floating notification-style window: no taskbar entry
         self.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
-        self.set_keep_above(True)
         self.set_decorated(False)
         self.set_resizable(False)
         self.set_skip_taskbar_hint(True)
@@ -52,17 +54,23 @@ class ExitOverlay(Gtk.Window):
         btn.connect('clicked', self._on_exit)
         self.add(btn)
 
-        self.connect('realize', self._on_realize)
+        # set_keep_above is applied after mapping so the WM sees it on the
+        # already-visible window rather than as a pre-map hint it may ignore.
+        self.connect('map', self._on_map)
 
-    def _on_realize(self, _widget):
-        """Defer positioning until the window is fully mapped."""
-        GLib.idle_add(self._position_window)
+    def _on_map(self, _widget):
+        """Apply keep-above and schedule positioning after the WM has mapped us."""
+        self.set_keep_above(True)
+        GLib.timeout_add(_WM_SETTLE_MS, self._position_window)
 
     def _position_window(self):
         """Position the button in the bottom-right corner."""
-        screen = Gdk.Screen.get_default()
-        sw = screen.get_width()
-        sh = screen.get_height()
+        display = Gdk.Display.get_default()
+        monitor = display.get_primary_monitor() or display.get_monitor(0)
+        geo = monitor.get_geometry()
+        scale = monitor.get_scale_factor()
+        sw = geo.width * scale
+        sh = geo.height * scale
         self.move(sw - _BUTTON_W - _MARGIN, sh - _BUTTON_H - _MARGIN)
         return False  # one-shot
 
