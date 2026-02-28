@@ -125,6 +125,10 @@ configure_lightdm() {
 if [[ -f /etc/gdm3/custom.conf ]]; then
     configure_gdm3 "${KIOSK_USER}"
     echo "      Configured GDM3 auto-login."
+    echo "      Verification (grep of /etc/gdm3/custom.conf):"
+    grep -E '^\s*(AutomaticLoginEnable|AutomaticLogin|WaylandEnable)\s*=' \
+        /etc/gdm3/custom.conf | sed 's/^/        /' \
+        || echo "        WARNING: expected keys not found – check /etc/gdm3/custom.conf"
 elif [[ -f /etc/lightdm/lightdm.conf ]]; then
     configure_lightdm "${KIOSK_USER}"
     # LightDM requires the user to be in the autologin group
@@ -155,10 +159,12 @@ mkdir -p "${INSTALL_DIR}"
 cp "${SCRIPT_DIR}/kiosk-launch.sh"        "${INSTALL_DIR}/"
 cp "${SCRIPT_DIR}/kiosk-break.sh"         "${INSTALL_DIR}/"
 cp "${SCRIPT_DIR}/kiosk-exit-overlay.py"  "${INSTALL_DIR}/"
+cp "${SCRIPT_DIR}/kiosk-diag.sh"          "${INSTALL_DIR}/"
 cp -r "${SCRIPT_DIR}/kiosk-config/"       "${INSTALL_DIR}/"
 chmod +x "${INSTALL_DIR}/kiosk-launch.sh"
 chmod +x "${INSTALL_DIR}/kiosk-break.sh"
 chmod +x "${INSTALL_DIR}/kiosk-exit-overlay.py"
+chmod +x "${INSTALL_DIR}/kiosk-diag.sh"
 chmod +x "${INSTALL_DIR}/kiosk-config/config_app.py"
 echo "      Done."
 

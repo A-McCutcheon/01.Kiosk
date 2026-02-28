@@ -29,6 +29,7 @@ an operator configuration app for network settings and URL management.
 ├── kiosk-launch.sh         # Launches Chromium in kiosk mode (or config app if no URL set)
 ├── kiosk-break.sh          # Kills the browser and reopens the config app
 ├── kiosk-exit-overlay.py   # Always-on-top exit button (touchscreen / VirtualBox)
+├── kiosk-diag.sh           # Diagnostic script – run if autologin is not working
 ├── kiosk-config/
 │   └── config_app.py       # GTK 3 configuration application
 ├── autostart/
@@ -118,6 +119,32 @@ sudo ./uninstall.sh [kiosk-username]   # default: kiosk
 This removes `/opt/kiosk`, the sudoers rule, the dconf shortcut, and the
 autostart entry, and disables auto-login.  The OS user is **not** deleted
 automatically; run `sudo userdel -r kiosk` if you also want to remove it.
+
+---
+
+## Troubleshooting
+
+### Autologin not working after installation
+
+Run the built-in diagnostic script to check all autologin prerequisites in one step:
+
+```bash
+sudo /opt/kiosk/kiosk-diag.sh
+```
+
+The script checks:
+- `/etc/gdm3/custom.conf` for `AutomaticLoginEnable=true`, `AutomaticLogin=kiosk`, and `WaylandEnable=false`
+- That the kiosk OS user and home directory exist
+- That the GNOME autostart entry and first-run wizard suppression marker are in place
+- Recent GDM3 journal entries for session startup errors
+
+If any check fails, re-run `sudo ./install.sh` from the repository directory.
+
+If all checks pass but autologin still does not work, check the GDM3 journal directly:
+
+```bash
+sudo journalctl -u gdm3 --since "10 minutes ago" --no-pager
+```
 
 ---
 
