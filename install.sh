@@ -17,9 +17,9 @@
 #  4. Grants the kiosk user password-less nmcli access (sudoers)
 #  5. Copies the kiosk scripts to /opt/kiosk
 #  6. Configures GNOME autostart so the kiosk launcher runs on login
-#  7. Registers Ctrl+Alt+C as a GNOME shortcut to break out of kiosk mode
-#     and installs a persistent on-screen overlay button for touchscreens
-#     and VirtualBox environments
+#  7. Registers Ctrl+Alt+C as a GNOME shortcut to break out of kiosk mode,
+#     installs a persistent on-screen overlay button for touchscreens and
+#     VirtualBox environments, and disables screen lock / screen blanking
 
 set -euo pipefail
 
@@ -118,6 +118,9 @@ if [[ -f /etc/gdm3/custom.conf ]]; then
     echo "      Configured GDM3 auto-login."
 elif [[ -f /etc/lightdm/lightdm.conf ]]; then
     configure_lightdm "${KIOSK_USER}"
+    # LightDM requires the user to be in the autologin group
+    groupadd -f autologin
+    usermod -aG autologin "${KIOSK_USER}"
     echo "      Configured LightDM auto-login."
 else
     echo "      WARNING: No supported display manager detected."
@@ -184,12 +187,29 @@ command='/opt/kiosk/kiosk-break.sh'
 binding='<Control><Alt>c'
 EOF
 
+# Database: disable screen lock, screen blanking, and power saving
+cat > "${DCONF_DB_DIR}/01-kiosk-power" <<'EOF'
+[org/gnome/desktop/screensaver]
+lock-enabled=false
+idle-activation-enabled=false
+
+[org/gnome/desktop/session]
+idle-delay=uint32 0
+
+[org/gnome/settings-daemon/plugins/power]
+sleep-inactive-ac-timeout=0
+sleep-inactive-battery-timeout=0
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-type='nothing'
+idle-dim=false
+EOF
+
 # Compile the dconf database
 if command -v dconf &>/dev/null; then
     dconf update
-    echo "      Ctrl+Alt+C shortcut registered via dconf."
+    echo "      Ctrl+Alt+C shortcut registered and screen lock/blanking disabled via dconf."
 else
-    echo "      WARNING: dconf not found; shortcut will be applied on first login."
+    echo "      WARNING: dconf not found; settings will be applied on first login."
 fi
 
 # ── Summary ────────────────────────────────────────────────────────────────

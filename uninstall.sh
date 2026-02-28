@@ -63,6 +63,7 @@ elif [[ -f /etc/lightdm/lightdm.conf ]]; then
         -e "s|^autologin-user=${KIOSK_USER}|#autologin-user=|" \
         -e 's|^autologin-user-timeout=0|#autologin-user-timeout=0|' \
         /etc/lightdm/lightdm.conf
+    gpasswd -d "${KIOSK_USER}" autologin 2>/dev/null || true
     echo "      Disabled LightDM auto-login."
 fi
 
