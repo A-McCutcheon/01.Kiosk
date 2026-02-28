@@ -213,6 +213,24 @@ sleep-inactive-battery-type='nothing'
 idle-dim=false
 EOF
 
+# Database: configure GNOME dock to auto-hide when any fullscreen window is
+# present.  This ensures the dock slides away once Chromium enters fullscreen
+# mode (via --start-fullscreen or the post-launch xdotool helper), regardless
+# of whether xdotool fires before or after the dock reserves its strut.
+#   dock-fixed=false    allow the dock to autohide (true = always visible)
+#   autohide=true       enable autohide behaviour
+#   intellihide=false   disable per-window dodge (use autohide-in-fullscreen
+#                       instead, which is simpler and more reliable for kiosk)
+#   autohide-in-fullscreen=true  hide whenever any window in the workspace
+#                       has _NET_WM_STATE_FULLSCREEN set
+cat > "${DCONF_DB_DIR}/02-kiosk-dock" <<'EOF'
+[org/gnome/shell/extensions/dash-to-dock]
+dock-fixed=false
+autohide=true
+intellihide=false
+autohide-in-fullscreen=true
+EOF
+
 # Compile the dconf database
 if command -v dconf &>/dev/null; then
     dconf update

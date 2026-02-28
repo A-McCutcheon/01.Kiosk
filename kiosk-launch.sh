@@ -57,17 +57,17 @@ fi
 # invokes kiosk-break.sh.  The process is cleaned up automatically when
 # this script exits (via the trap below).
 OVERLAY_PID=""
-XDOTOOL_PID=""
+FULLSCREEN_PID=""
 if [[ -f "${EXIT_OVERLAY}" ]]; then
     python3 "${EXIT_OVERLAY}" &
     OVERLAY_PID=$!
 fi
 
-_cleanup_overlay() {
-    [[ -n "${OVERLAY_PID}" ]]  && kill "${OVERLAY_PID}"  2>/dev/null || true
-    [[ -n "${XDOTOOL_PID}" ]]  && kill "${XDOTOOL_PID}"  2>/dev/null || true
+_cleanup() {
+    [[ -n "${OVERLAY_PID}" ]]   && kill "${OVERLAY_PID}"   2>/dev/null || true
+    [[ -n "${FULLSCREEN_PID}" ]] && kill "${FULLSCREEN_PID}" 2>/dev/null || true
 }
-trap '_cleanup_overlay' EXIT
+trap '_cleanup' EXIT
 
 # ── Launch in kiosk mode ────────────────────────────────────────────────────
 # Flags explained:
@@ -80,6 +80,36 @@ trap '_cleanup_overlay' EXIT
 #   --disable-infobars    suppress info banners
 #   --noerrdialogs        suppress crash dialogs
 #   --incognito           no local browsing history
+#
+# On GNOME X11, --start-fullscreen sends _NET_WM_STATE_FULLSCREEN before GNOME
+# Shell finishes placing its top panel and dock, so Mutter processes the hint
+# before the panel struts are registered and Chromium ends up covering only the
+# work area.  A background helper waits for GNOME Shell to settle, then
+# re-applies the fullscreen hint on the active (Chromium) window so that Mutter
+# covers all panels.  The dconf 02-kiosk-dock setting also makes the dock
+# autohide whenever any fullscreen window is present.
+if command -v xdotool &>/dev/null; then
+    # GNOME_SETTLE_SECS: time to wait after Chromium starts for GNOME Shell to
+    # finish registering its panel/dock struts before we re-send the fullscreen
+    # hint.  3 s is sufficient on most hardware and VirtualBox guests.
+    GNOME_SETTLE_SECS=3
+    (sleep "${GNOME_SETTLE_SECS}"
+     # Confirm the active window belongs to Chromium before setting fullscreen,
+     # so we never accidentally fullscreen an unrelated window on a multi-user
+     # or admin session.
+     active_wid=$(xdotool getactivewindow 2>/dev/null) || true
+     if [[ -n "${active_wid}" ]]; then
+         active_cls=$(xdotool getwindowclassname "${active_wid}" 2>/dev/null) || true
+         if [[ "${active_cls,,}" == *chromium* ]]; then
+             xdotool windowstate --add FULLSCREEN "${active_wid}" 2>/dev/null || true
+         fi
+     fi) &
+    FULLSCREEN_PID=$!
+else
+    echo "WARNING: xdotool not found; GNOME top panel/dock may overlay the kiosk window." >&2
+    echo "         Re-run sudo ./install.sh to install required packages." >&2
+fi
+
 "${BROWSER}" \
     --kiosk \
     --start-fullscreen \
@@ -92,23 +122,7 @@ trap '_cleanup_overlay' EXIT
     --disable-session-crashed-bubble \
     --noerrdialogs \
     --incognito \
-    "${URL}" &
-BROWSER_PID=$!
-
-# On GNOME X11 sessions, --start-fullscreen may not cover the top panel and
-# dock because the WM processes the hint before GNOME Shell layout settles.
-# Wait for the Chromium window to map, then explicitly add
-# _NET_WM_STATE_FULLSCREEN via xdotool so Mutter covers all panels.
-if command -v xdotool &>/dev/null; then
-    (timeout 30 xdotool search --pid "${BROWSER_PID}" --sync \
-        windowstate --add FULLSCREEN 2>/dev/null || true) &
-    XDOTOOL_PID=$!
-else
-    echo "WARNING: xdotool not found; GNOME top panel/dock may overlay the kiosk window." >&2
-    echo "         Re-run sudo ./install.sh to install required packages." >&2
-fi
-
-wait "${BROWSER_PID}" || true
+    "${URL}" || true
 
 # ── When the browser exits, reopen the config app ─────────────────────────
 python3 "${CONFIG_APP}"
