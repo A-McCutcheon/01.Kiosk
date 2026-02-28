@@ -94,16 +94,15 @@ if command -v xdotool &>/dev/null; then
     # hint.  3 s is sufficient on most hardware and VirtualBox guests.
     GNOME_SETTLE_SECS=3
     (sleep "${GNOME_SETTLE_SECS}"
-     # Confirm the active window belongs to Chromium before setting fullscreen,
-     # so we never accidentally fullscreen an unrelated window on a multi-user
-     # or admin session.
-     active_wid=$(xdotool getactivewindow 2>/dev/null) || true
-     if [[ -n "${active_wid}" ]]; then
-         active_cls=$(xdotool getwindowclassname "${active_wid}" 2>/dev/null) || true
-         if [[ "${active_cls,,}" == *chromium* ]]; then
-             xdotool windowstate --add FULLSCREEN "${active_wid}" 2>/dev/null || true
-         fi
-     fi) &
+     # Search for all top-level windows whose WM_CLASS contains "chromium" and
+     # apply _NET_WM_STATE_FULLSCREEN to each one.  Searching by class name is
+     # more reliable than getactivewindow: the kiosk-exit-overlay button is
+     # always-on-top so it holds focus, causing getactivewindow to return the
+     # overlay window rather than the Chromium main window.  Internal Chromium
+     # helper processes (GPU, renderer, crash handler) do not create top-level
+     # X windows and are therefore not returned by this search.
+     xdotool search --classname chromium windowstate --add FULLSCREEN \
+         2>/dev/null || true) &
     FULLSCREEN_PID=$!
 else
     echo "WARNING: xdotool not found; GNOME top panel/dock may overlay the kiosk window." >&2
