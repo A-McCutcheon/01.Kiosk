@@ -74,6 +74,9 @@ trap '_cleanup_overlay' EXIT
 #                         fullscreen from first paint; required on GNOME X11
 #                         sessions where --kiosk alone does not trigger the WM
 #                         fullscreen hint
+#   --user-data-dir       dedicated clean profile directory; prevents any saved
+#                         window state from a previous Chromium session
+#                         (e.g. ~/.config/chromium) overriding --kiosk mode
 #   --no-first-run        skip first-run wizard
 #   --disable-infobars    suppress info banners
 #   --noerrdialogs        suppress crash dialogs
@@ -81,6 +84,7 @@ trap '_cleanup_overlay' EXIT
 "${BROWSER}" \
     --kiosk \
     --start-fullscreen \
+    --user-data-dir="${HOME}/.config/chromium-kiosk" \
     --no-first-run \
     --disable-infobars \
     --disable-translate \
