@@ -41,7 +41,7 @@ echo ""
 
 # ── 1. Packages ────────────────────────────────────────────────────────────
 echo "[1/6] Checking required packages…"
-REQUIRED_PKGS=(chromium-browser python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager)
+REQUIRED_PKGS=(chromium-browser python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager xdotool)
 MISSING_PKGS=()
 for pkg in "${REQUIRED_PKGS[@]}"; do
     if ! dpkg-query -W -f='${db:Status-Status}' "${pkg}" 2>/dev/null | grep -q '^installed$'; then
