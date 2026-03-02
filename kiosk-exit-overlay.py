@@ -117,7 +117,7 @@ class ExitOverlay(Gtk.Window):
             return None  # process gone
         except PermissionError:
             pass  # process exists but owned by another user; continue
-        # Use xdotool to confirm the window is mapped and visible.
+        # Use xdotool to confirm the window is mapped.
         # Chromium's UI window belongs to a child renderer process, not the
         # launcher PID, so --pid never matches the kiosk window.  We search
         # by window class name instead.  The preceding os.kill(pid, 0) check
@@ -126,17 +126,24 @@ class ExitOverlay(Gtk.Window):
         # We try both --classname (WM_CLASS instance, e.g. "chromium") and
         # --class (WM_CLASS class, e.g. "Chromium") to cover all package
         # variants (apt, snap, etc.).
+        # --onlyvisible is tried first; if it returns nothing (Chromium's
+        # --kiosk fullscreen window is mapped but not reported as IsViewable
+        # on some compositors), we retry without it so any mapped window counts.
         try:
-            searches = [
-                ['xdotool', 'search', '--onlyvisible', '--classname', 'chromium'],
-                ['xdotool', 'search', '--onlyvisible', '--classname', 'chromium-browser'],
-                ['xdotool', 'search', '--onlyvisible', '--class', 'Chromium'],
-                ['xdotool', 'search', '--onlyvisible', '--class', 'Chromium-browser'],
+            class_args = [
+                ('--classname', 'chromium'),
+                ('--classname', 'chromium-browser'),
+                ('--class',     'Chromium'),
+                ('--class',     'Chromium-browser'),
             ]
-            for args in searches:
-                result = subprocess.run(args, capture_output=True, timeout=2)
-                if result.returncode == 0 and result.stdout.strip():
-                    return True
+            for visible_flag in (['--onlyvisible'], []):
+                for flag, name in class_args:
+                    result = subprocess.run(
+                        ['xdotool', 'search'] + visible_flag + [flag, name],
+                        capture_output=True, timeout=2,
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        return True
             return False
         except (FileNotFoundError, subprocess.TimeoutExpired):
             # xdotool not available; treat alive process as ready
