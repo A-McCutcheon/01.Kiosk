@@ -42,6 +42,10 @@ _MARGIN   = 10
 _WM_SETTLE_MS = 100
 # Milliseconds between polls while waiting for Chromium's window to appear.
 _CHROMIUM_POLL_MS = 500
+# Maximum number of polls before showing the overlay unconditionally (so the
+# button always appears even when xdotool cannot detect the window class).
+# 60 polls × 500 ms = 30 seconds.
+_CHROMIUM_POLL_MAX = 60
 
 
 class ExitOverlay(Gtk.Window):
@@ -49,6 +53,7 @@ class ExitOverlay(Gtk.Window):
     def __init__(self, chromium_pid=None):
         super().__init__()
         self._chromium_pid = chromium_pid
+        self._poll_count = 0
 
         # DOCK-type windows sit in the "dock" stacking layer which the X11/EWMH
         # spec places above fullscreen windows.  This ensures the button remains
@@ -108,20 +113,28 @@ class ExitOverlay(Gtk.Window):
         # Verify the process is still alive
         try:
             os.kill(self._chromium_pid, 0)
-        except (ProcessLookupError, PermissionError):
+        except ProcessLookupError:
             return None  # process gone
+        except PermissionError:
+            pass  # process exists but owned by another user; continue
         # Use xdotool to confirm the window is mapped and visible.
         # Chromium's UI window belongs to a child renderer process, not the
         # launcher PID, so --pid never matches the kiosk window.  We search
         # by window class name instead.  The preceding os.kill(pid, 0) check
         # ensures our Chromium launcher is alive; on a dedicated kiosk there
         # is only ever one Chromium instance, so class-name matching is safe.
+        # We try both --classname (WM_CLASS instance, e.g. "chromium") and
+        # --class (WM_CLASS class, e.g. "Chromium") to cover all package
+        # variants (apt, snap, etc.).
         try:
-            for classname in ('chromium', 'chromium-browser'):
-                result = subprocess.run(
-                    ['xdotool', 'search', '--onlyvisible', '--classname', classname],
-                    capture_output=True, timeout=2,
-                )
+            searches = [
+                ['xdotool', 'search', '--onlyvisible', '--classname', 'chromium'],
+                ['xdotool', 'search', '--onlyvisible', '--classname', 'chromium-browser'],
+                ['xdotool', 'search', '--onlyvisible', '--class', 'Chromium'],
+                ['xdotool', 'search', '--onlyvisible', '--class', 'Chromium-browser'],
+            ]
+            for args in searches:
+                result = subprocess.run(args, capture_output=True, timeout=2)
                 if result.returncode == 0 and result.stdout.strip():
                     return True
             return False
@@ -132,14 +145,23 @@ class ExitOverlay(Gtk.Window):
     def _poll_for_chromium(self):
         """
         Called every _CHROMIUM_POLL_MS ms.  Shows the overlay once Chromium's
-        window is on screen; quits if the process has already gone.
+        window is on screen; quits if the process has already gone.  After
+        _CHROMIUM_POLL_MAX polls the overlay is shown unconditionally so it
+        always appears even when xdotool cannot detect the window class.
         """
+        self._poll_count += 1
         status = self._chromium_window_visible()
         if status is None:
             # Chromium exited before we showed — nothing to do
             Gtk.main_quit()
             return False
-        if status:
+        if status or self._poll_count >= _CHROMIUM_POLL_MAX:
+            if not status:
+                print(
+                    "kiosk-exit-overlay: xdotool did not detect Chromium window "
+                    "after 30 s; showing overlay unconditionally.",
+                    file=sys.stderr,
+                )
             self.show_all()
             GLib.timeout_add(1000, self._keep_on_top)
             return False  # stop polling
