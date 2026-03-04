@@ -108,7 +108,13 @@ class KioskConfigApp(Gtk.Window):
         super().__init__(title='Kiosk Configuration')
         self.set_default_size(640, 520)
         self.set_border_width(12)
-        self.connect('delete-event', Gtk.main_quit)
+        # Block the window-close button so users cannot dismiss the config
+        # app and return to the underlying OS desktop.
+        self.connect('delete-event', self._on_delete_event)
+        self.fullscreen()
+        self.set_keep_above(True)
+        self.set_skip_taskbar_hint(True)
+        self.set_skip_pager_hint(True)
 
         self.config = load_config()
 
@@ -137,6 +143,10 @@ class KioskConfigApp(Gtk.Window):
     # ------------------------------------------------------------------
     # Status helpers
     # ------------------------------------------------------------------
+
+    def _on_delete_event(self, *_):
+        """Block the OS window-close button to prevent OS desktop access."""
+        return True
 
     def _set_status(self, msg, error=False):
         colour = 'red' if error else 'darkgreen'
@@ -395,7 +405,7 @@ class KioskConfigApp(Gtk.Window):
         if not os.path.isfile(script):
             script = '/opt/kiosk/kiosk-launch.sh'
         subprocess.Popen(['/bin/bash', script])
-        self.hide()
+        Gtk.main_quit()
 
     def _on_restart_kiosk(self, _btn):
         self._set_status('Restarting kiosk…')
@@ -409,7 +419,7 @@ class KioskConfigApp(Gtk.Window):
         if not os.path.isfile(script):
             script = '/opt/kiosk/kiosk-launch.sh'
         subprocess.Popen(['/bin/bash', script])
-        self.hide()
+        Gtk.main_quit()
 
     def _on_reboot_device(self, _btn):
         dialog = Gtk.MessageDialog(
