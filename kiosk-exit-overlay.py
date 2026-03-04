@@ -95,12 +95,23 @@ class ExitOverlay(Gtk.Window):
     def _position_window(self):
         """Position the button in the bottom-right corner."""
         display = Gdk.Display.get_default()
+        if display is None:
+            return False
         monitor = display.get_primary_monitor() or display.get_monitor(0)
+        if monitor is None:
+            return False
         geo = monitor.get_geometry()
         scale = monitor.get_scale_factor()
-        sw = geo.width * scale
-        sh = geo.height * scale
-        self.move(sw - _BUTTON_W - _MARGIN, sh - _BUTTON_H * 2 - _SPACING - _MARGIN)
+        # geo.x/geo.y give the monitor's origin in global screen coordinates;
+        # include them so positioning is correct on multi-monitor setups and on
+        # X11 configurations where the primary monitor is not at (0, 0).
+        sx = geo.x + geo.width * scale
+        sy = geo.y + geo.height * scale
+        # Use the actual allocated window size rather than a hardcoded estimate
+        # so the window is flush with the bottom-right corner regardless of
+        # widget padding or font scaling.
+        win_w, win_h = self.get_size()
+        self.move(sx - win_w - _MARGIN, sy - win_h - _MARGIN)
         return False  # one-shot
 
     def _keep_on_top(self):
