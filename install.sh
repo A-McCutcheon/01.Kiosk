@@ -81,6 +81,8 @@ cat > "${SUDOERS_FILE}" <<EOF
 ${KIOSK_USER} ALL=(ALL) NOPASSWD: /usr/bin/nmcli
 # Allow the kiosk user to reboot the device without a password prompt.
 ${KIOSK_USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl reboot
+# Allow the kiosk user to shut down the device without a password prompt.
+${KIOSK_USER} ALL=(ALL) NOPASSWD: /usr/bin/systemctl poweroff
 EOF
 chmod 0440 "${SUDOERS_FILE}"
 echo "      Wrote ${SUDOERS_FILE}"
@@ -154,4 +156,5 @@ echo "  2. Configure autologin for '${KIOSK_USER}' in your display manager, then
 echo "  3. Enter the website URL and click 'Launch Kiosk'."
 echo "  4. Press Ctrl+Alt+C at any time to return to the config app."
 echo "     Or tap/click the on-screen '⚙ Exit' button (bottom-right corner)."
+echo "     Or tap/click the on-screen '⏻ Shutdown' button to power off."
 echo ""
