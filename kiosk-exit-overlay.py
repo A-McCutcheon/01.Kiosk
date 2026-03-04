@@ -37,6 +37,7 @@ if not os.path.isfile(BREAK_SCRIPT):
 _BUTTON_W = 90
 _BUTTON_H = 50
 _MARGIN   = 10
+_SPACING  = 4
 # Milliseconds to wait after the 'map' signal before calling move(), giving the
 # window manager time to complete its initial window placement.
 _WM_SETTLE_MS = 100
@@ -67,11 +68,20 @@ class ExitOverlay(Gtk.Window):
         self.set_accept_focus(False)
         self.set_focus_on_map(False)
 
+        btn_shutdown = Gtk.Button(label='⏻ Shutdown')
+        btn_shutdown.set_size_request(_BUTTON_W, _BUTTON_H)
+        btn_shutdown.set_tooltip_text('Shut down the system')
+        btn_shutdown.connect('clicked', self._on_shutdown)
+
         btn = Gtk.Button(label='⚙ Exit')
         btn.set_size_request(_BUTTON_W, _BUTTON_H)
         btn.set_tooltip_text('Exit kiosk mode')
         btn.connect('clicked', self._on_exit)
-        self.add(btn)
+
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=_SPACING)
+        vbox.pack_start(btn_shutdown, False, False, 0)
+        vbox.pack_start(btn, False, False, 0)
+        self.add(vbox)
 
         # set_keep_above is applied after mapping so the WM sees it on the
         # already-visible window rather than as a pre-map hint it may ignore.
@@ -90,7 +100,7 @@ class ExitOverlay(Gtk.Window):
         scale = monitor.get_scale_factor()
         sw = geo.width * scale
         sh = geo.height * scale
-        self.move(sw - _BUTTON_W - _MARGIN, sh - _BUTTON_H - _MARGIN)
+        self.move(sw - _BUTTON_W - _MARGIN, sh - _BUTTON_H * 2 - _SPACING - _MARGIN)
         return False  # one-shot
 
     def _keep_on_top(self):
@@ -173,6 +183,28 @@ class ExitOverlay(Gtk.Window):
             GLib.timeout_add(1000, self._keep_on_top)
             return False  # stop polling
         return True  # keep polling
+
+    def _on_shutdown(self, _btn):
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.YES_NO,
+            text='Shut down the system?',
+        )
+        dialog.format_secondary_text('The kiosk will power off. Are you sure?')
+        response = dialog.run()
+        dialog.destroy()
+        if response != Gtk.ResponseType.YES:
+            return
+        self.hide()
+        if self._chromium_pid is not None:
+            try:
+                os.kill(self._chromium_pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
+        subprocess.Popen(['sudo', 'systemctl', 'poweroff'])
+        Gtk.main_quit()
 
     def _on_exit(self, _btn):
         self.hide()

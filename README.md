@@ -14,6 +14,7 @@ an operator configuration app for network settings and URL management.
 | **Website launcher** | Opens a configured URL in Chromium kiosk mode (full-screen, no address bar) |
 | **Break-out shortcut** | Press **Ctrl+Alt+C** at any time to close the browser and reopen the config app |
 | **Break-out button** | Tap or click the **⚙ Exit** button (bottom-right corner, always visible) — works on touchscreens and in VirtualBox |
+| **Shutdown button** | Tap or click the **⏻ Shutdown** button (above the Exit button) to power off the system with a confirmation prompt |
 | **IP / DHCP settings** | GUI to switch any wired or wireless interface between DHCP and static IP |
 | **WiFi management** | Scan for networks, select one, enter a password, and connect |
 | **URL management** | Enter or change the kiosk website and relaunch instantly |
@@ -65,6 +66,7 @@ After installation:
 5. Chromium opens full-screen showing the configured site.
 6. Press **Ctrl+Alt+C** at any time to close the browser and return to the config app.  
    Alternatively, tap or click the **⚙ Exit** button in the bottom-right corner of the screen.
+   To power off the device, tap or click the **⏻ Shutdown** button directly above the Exit button.
 
 ---
 
