@@ -33,8 +33,15 @@ DEFAULT_CONFIG = {
         'gateway': '',
         'dns1': '',
         'dns2': '',
-    }
+    },
+    'wifi_ap': {
+        'ssid': 'KioskAP',
+        'password': '',
+    },
 }
+
+# NetworkManager connection name used for the kiosk access point.
+_AP_CON_NAME = 'kiosk-ap'
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +59,9 @@ def load_config():
             cfg.setdefault('network', {})
             for key, val in DEFAULT_CONFIG['network'].items():
                 cfg['network'].setdefault(key, val)
+            cfg.setdefault('wifi_ap', {})
+            for key, val in DEFAULT_CONFIG['wifi_ap'].items():
+                cfg['wifi_ap'].setdefault(key, val)
             return cfg
         except (json.JSONDecodeError, IOError):
             pass
@@ -256,7 +266,7 @@ class KioskConfigApp(Gtk.Window):
 
         # Network list
         scroll = Gtk.ScrolledWindow()
-        scroll.set_min_content_height(200)
+        scroll.set_min_content_height(160)
         self._wifi_store = Gtk.ListStore(str, str, str)   # SSID, Signal, Security
         tv = Gtk.TreeView(model=self._wifi_store)
         for idx, col_name in enumerate(['SSID', 'Signal', 'Security']):
@@ -280,6 +290,55 @@ class KioskConfigApp(Gtk.Window):
         connect_btn = Gtk.Button(label='Connect to Selected Network')
         connect_btn.connect('clicked', self._on_wifi_connect)
         box.pack_start(connect_btn, False, False, 0)
+
+        # ── Access Point (Hotspot) section ──────────────────────────────────
+        sep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        box.pack_start(sep, False, False, 4)
+
+        ap_header = Gtk.Label()
+        ap_header.set_markup('<b>Access Point (Hotspot)</b>')
+        ap_header.set_xalign(0)
+        box.pack_start(ap_header, False, False, 0)
+
+        ap_note = Gtk.Label(
+            label='Runs simultaneously with client Wi-Fi. Uses WPA2-PSK + DHCP.')
+        ap_note.set_xalign(0)
+        box.pack_start(ap_note, False, False, 0)
+
+        ap_cfg = self.config.get('wifi_ap', {})
+
+        ap_ssid_row = Gtk.Box(spacing=8)
+        ap_ssid_lbl = Gtk.Label(label='AP SSID:')
+        ap_ssid_lbl.set_width_chars(12)
+        ap_ssid_lbl.set_xalign(1)
+        ap_ssid_row.pack_start(ap_ssid_lbl, False, False, 0)
+        self._ap_ssid = Gtk.Entry()
+        self._ap_ssid.set_text(ap_cfg.get('ssid', 'KioskAP'))
+        self._ap_ssid.set_placeholder_text('KioskAP')
+        ap_ssid_row.pack_start(self._ap_ssid, True, True, 0)
+        box.pack_start(ap_ssid_row, False, False, 0)
+
+        ap_pwd_row = Gtk.Box(spacing=8)
+        ap_pwd_lbl = Gtk.Label(label='AP Password:')
+        ap_pwd_lbl.set_width_chars(12)
+        ap_pwd_lbl.set_xalign(1)
+        ap_pwd_row.pack_start(ap_pwd_lbl, False, False, 0)
+        self._ap_pwd = Gtk.Entry()
+        self._ap_pwd.set_visibility(False)
+        self._ap_pwd.set_text(ap_cfg.get('password', ''))
+        self._ap_pwd.set_placeholder_text('Minimum 8 characters (WPA2-PSK)')
+        ap_pwd_row.pack_start(self._ap_pwd, True, True, 0)
+        box.pack_start(ap_pwd_row, False, False, 0)
+
+        ap_btn_row = Gtk.Box(spacing=8)
+        start_ap_btn = Gtk.Button(label='Start Access Point')
+        start_ap_btn.get_style_context().add_class('suggested-action')
+        start_ap_btn.connect('clicked', self._on_ap_start)
+        ap_btn_row.pack_start(start_ap_btn, False, False, 0)
+        stop_ap_btn = Gtk.Button(label='Stop Access Point')
+        stop_ap_btn.connect('clicked', self._on_ap_stop)
+        ap_btn_row.pack_start(stop_ap_btn, False, False, 0)
+        box.pack_start(ap_btn_row, False, False, 0)
 
         return box
 
@@ -517,6 +576,91 @@ class KioskConfigApp(Gtk.Window):
         else:
             GLib.idle_add(self._set_status,
                           f'Failed to connect to {ssid}: {err}', True)
+
+    # ------------------------------------------------------------------
+    # Signal handlers – Access Point
+    # ------------------------------------------------------------------
+
+    def _on_ap_start(self, _btn):
+        ssid = self._ap_ssid.get_text().strip()
+        pwd  = self._ap_pwd.get_text()
+        if not ssid:
+            self._set_status('AP SSID cannot be empty.', error=True)
+            return
+        if len(pwd) < 8:
+            self._set_status(
+                'AP password must be at least 8 characters (WPA2-PSK).',
+                error=True)
+            return
+        self.config.setdefault('wifi_ap', {})
+        self.config['wifi_ap']['ssid']     = ssid
+        self.config['wifi_ap']['password'] = pwd
+        save_config(self.config)
+        self._set_status('Starting access point…')
+        t = threading.Thread(target=self._ap_start_thread,
+                             args=(ssid, pwd), daemon=True)
+        t.start()
+
+    def _on_ap_stop(self, _btn):
+        self._set_status('Stopping access point…')
+        t = threading.Thread(target=self._ap_stop_thread, daemon=True)
+        t.start()
+
+    def _ap_start_thread(self, ssid, password):
+        iface = self._get_wifi_iface()
+        if not iface:
+            GLib.idle_add(self._set_status, 'No WiFi interface found.', True)
+            return
+
+        # Remove any pre-existing kiosk-ap connection (ignore errors)
+        run_cmd(['sudo', 'nmcli', 'con', 'delete', _AP_CON_NAME])
+
+        cmd = [
+            'sudo', 'nmcli', 'con', 'add',
+            'type',                     'wifi',
+            'ifname',                   iface,
+            'con-name',                 _AP_CON_NAME,
+            'ssid',                     ssid,
+            '802-11-wireless.mode',     'ap',
+            '802-11-wireless.band',     'bg',
+            # 'shared' enables NetworkManager's built-in DHCP (via dnsmasq)
+            # and NAT so connected clients receive addresses and internet access.
+            'ipv4.method',              'shared',
+            'wifi-sec.key-mgmt',        'wpa-psk',
+            'wifi-sec.psk',             password,
+        ]
+        rc, _, err = run_cmd(cmd)
+        if rc != 0:
+            GLib.idle_add(self._set_status,
+                          f'Failed to create AP connection: {err}', True)
+            return
+
+        rc, _, err = run_cmd(['sudo', 'nmcli', 'con', 'up', _AP_CON_NAME])
+        if rc == 0:
+            GLib.idle_add(self._set_status,
+                          f'Access point "{ssid}" started.')
+        else:
+            GLib.idle_add(self._set_status,
+                          f'Failed to start access point: {err}', True)
+
+    def _ap_stop_thread(self):
+        rc, _, err = run_cmd(['sudo', 'nmcli', 'con', 'down', _AP_CON_NAME])
+        if rc == 0:
+            GLib.idle_add(self._set_status, 'Access point stopped.')
+        else:
+            GLib.idle_add(self._set_status,
+                          f'Failed to stop access point: {err}', True)
+
+    def _get_wifi_iface(self):
+        """Return the name of the first available WiFi interface, or ''."""
+        rc, out, _ = run_cmd(['nmcli', '-t', '-f', 'DEVICE,TYPE', 'dev'])
+        if rc != 0:
+            return ''
+        for line in out.splitlines():
+            parts = line.split(':')
+            if len(parts) >= 2 and parts[0] and parts[1] == 'wifi':
+                return parts[0]
+        return ''
 
 
 # ---------------------------------------------------------------------------
