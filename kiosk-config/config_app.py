@@ -121,11 +121,19 @@ class KioskConfigApp(Gtk.Window):
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.add(root)
 
-        # Header
+        # Header row: title + keyboard toggle button
+        header_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        header_row.set_margin_bottom(6)
+        root.pack_start(header_row, False, False, 0)
+
         header = Gtk.Label()
         header.set_markup('<big><b>Kiosk Configuration</b></big>')
-        header.set_margin_bottom(6)
-        root.pack_start(header, False, False, 0)
+        header_row.pack_start(header, True, True, 0)
+
+        kbd_btn = Gtk.Button(label='⌨ Keyboard')
+        kbd_btn.set_tooltip_text('Toggle on-screen keyboard')
+        kbd_btn.connect('clicked', self._on_keyboard)
+        header_row.pack_end(kbd_btn, False, False, 0)
 
         # Notebook
         nb = Gtk.Notebook()
@@ -153,6 +161,25 @@ class KioskConfigApp(Gtk.Window):
         self._status.set_markup(
             f'<span foreground="{colour}">{GLib.markup_escape_text(msg)}</span>'
         )
+
+    def _on_keyboard(self, _btn):
+        """Toggle the on-screen keyboard (onboard)."""
+        try:
+            result = subprocess.run(
+                ['pgrep', '-x', 'onboard'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            if result.returncode == 0:
+                subprocess.run(
+                    ['pkill', '-x', 'onboard'],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+            else:
+                subprocess.Popen(['onboard'])
+        except FileNotFoundError:
+            self._set_status('onboard is not installed', error=True)
+        except Exception as exc:
+            self._set_status(str(exc), error=True)
 
     # ------------------------------------------------------------------
     # Website tab
