@@ -52,28 +52,28 @@ _CHROMIUM_POLL_MAX = 60
 
 
 def _onboard_geometry():
-    """Return a --geometry argument to position onboard at the bottom of the screen.
+    """Return geometry arguments to position onboard at the bottom of the screen.
 
     Computes the screen dimensions from the primary monitor so that onboard
     spans the full screen width and sits flush with the bottom edge.
-    Returns None if the display cannot be queried (falls back to onboard's
-    own default placement).
+    Returns an empty list if the display cannot be queried (falls back to
+    onboard's own default placement).
     """
     try:
         display = Gdk.Display.get_default()
         if display is None:
-            return None
+            return []
         monitor = display.get_primary_monitor() or display.get_monitor(0)
         if monitor is None:
-            return None
+            return []
         geo = monitor.get_geometry()
         scale = monitor.get_scale_factor()
         kbd_w = int(geo.width * scale)
         x = geo.x
         y = geo.y + int(geo.height * scale) - _ONBOARD_H
-        return '--geometry={}x{}+{}+{}'.format(kbd_w, _ONBOARD_H, x, y)
+        return ['-x', str(x), '-y', str(y), '-s', '{}x{}'.format(kbd_w, _ONBOARD_H)]
     except Exception:
-        return None
+        return []
 
 
 class ExitOverlay(Gtk.Window):
@@ -265,9 +265,7 @@ class ExitOverlay(Gtk.Window):
         else:
             # onboard is not running — start it at the bottom of the screen
             cmd = ['onboard']
-            geo = _onboard_geometry()
-            if geo:
-                cmd.append(geo)
+            cmd.extend(_onboard_geometry())
             subprocess.Popen(cmd)
 
     def _on_exit(self, _btn):
