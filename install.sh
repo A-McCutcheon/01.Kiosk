@@ -41,7 +41,7 @@ echo ""
 
 # ── 1. Packages ────────────────────────────────────────────────────────────
 echo "[1/6] Checking required packages…"
-REQUIRED_PKGS=(chromium-browser python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager dnsmasq xdotool)
+REQUIRED_PKGS=(chromium-browser python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager dnsmasq xdotool onboard)
 MISSING_PKGS=()
 for pkg in "${REQUIRED_PKGS[@]}"; do
     if ! dpkg-query -W -f='${db:Status-Status}' "${pkg}" 2>/dev/null | grep -q '^installed$'; then
@@ -157,4 +157,5 @@ echo "  3. Enter the website URL and click 'Launch Kiosk'."
 echo "  4. Press Ctrl+Alt+C at any time to return to the config app."
 echo "     Or tap/click the on-screen '⚙ Exit' button (bottom-right corner)."
 echo "     Or tap/click the on-screen '⏻ Shutdown' button to power off."
+echo "     Or tap/click the on-screen '⌨ Keyboard' button to toggle the on-screen keyboard."
 echo ""

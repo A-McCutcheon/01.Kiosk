@@ -78,9 +78,15 @@ class ExitOverlay(Gtk.Window):
         btn.set_tooltip_text('Exit kiosk mode')
         btn.connect('clicked', self._on_exit)
 
+        btn_kbd = Gtk.Button(label='⌨ Keyboard')
+        btn_kbd.set_size_request(_BUTTON_W, _BUTTON_H)
+        btn_kbd.set_tooltip_text('Toggle on-screen keyboard')
+        btn_kbd.connect('clicked', self._on_keyboard)
+
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=_SPACING)
         vbox.pack_start(btn_shutdown, False, False, 0)
         vbox.pack_start(btn, False, False, 0)
+        vbox.pack_start(btn_kbd, False, False, 0)
         self.add(vbox)
 
         # set_keep_above is applied after mapping so the WM sees it on the
@@ -216,6 +222,22 @@ class ExitOverlay(Gtk.Window):
                 pass
         subprocess.Popen(['sudo', 'systemctl', 'poweroff'])
         Gtk.main_quit()
+
+    def _on_keyboard(self, _btn):
+        """Toggle the on-screen keyboard (onboard)."""
+        result = subprocess.run(
+            ['pgrep', '-x', 'onboard'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        if result.returncode == 0:
+            # onboard is running — close it
+            subprocess.run(
+                ['pkill', '-x', 'onboard'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        else:
+            # onboard is not running — start it
+            subprocess.Popen(['onboard'])
 
     def _on_exit(self, _btn):
         self.hide()
