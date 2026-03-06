@@ -12,7 +12,8 @@ License notes:
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GLib
+gi.require_version('Gdk', '3.0')
+from gi.repository import Gtk, Gdk, GLib
 
 import json
 import os
@@ -99,6 +100,43 @@ def netmask_to_cidr(netmask):
 
 
 # ---------------------------------------------------------------------------
+# On-screen keyboard helper
+# ---------------------------------------------------------------------------
+
+def _onboard_geometry():
+    """Return a --geometry argument to position onboard at the bottom of the screen.
+
+    Computes the screen dimensions from the primary monitor so that onboard
+    spans the full screen width and sits flush with the bottom edge.
+    Returns None if the display cannot be queried (falls back to onboard's
+    own default placement).
+    """
+    try:
+        display = Gdk.Display.get_default()
+        if display is None:
+            return None
+        monitor = display.get_primary_monitor() or display.get_monitor(0)
+        if monitor is None:
+            return None
+        geo = monitor.get_geometry()
+        scale = monitor.get_scale_factor()
+        kbd_w = int(geo.width * scale)
+        x = geo.x
+        y = geo.y + int(geo.height * scale) - _ONBOARD_H
+        return '--geometry={}x{}+{}+{}'.format(kbd_w, _ONBOARD_H, x, y)
+    except Exception:
+        return None
+
+
+# Height (pixels) used when positioning the onboard on-screen keyboard.
+_ONBOARD_H = 200
+# Milliseconds to wait after launching onboard before re-raising this window,
+# allowing onboard enough time to complete its window mapping and claim focus
+# before we take it back.
+_FOCUS_RESTORE_MS = 500
+
+
+# ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
 
@@ -175,7 +213,14 @@ class KioskConfigApp(Gtk.Window):
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
             else:
-                subprocess.Popen(['onboard'])
+                cmd = ['onboard']
+                geo = _onboard_geometry()
+                if geo:
+                    cmd.append(geo)
+                subprocess.Popen(cmd)
+                # Restore focus to this window so keyboard input reaches the
+                # text entries after onboard has taken focus on launch.
+                GLib.timeout_add(_FOCUS_RESTORE_MS, lambda: self.present() or False)
         except FileNotFoundError:
             self._set_status('onboard is not installed', error=True)
         except Exception as exc:
