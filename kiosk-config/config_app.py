@@ -155,6 +155,8 @@ class KioskConfigApp(Gtk.Window):
         self.set_skip_pager_hint(True)
 
         self.config = load_config()
+        # Tracks which Gtk.Entry last received focus so the OSK can restore it.
+        self._last_focused_entry = None
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.add(root)
@@ -179,6 +181,12 @@ class KioskConfigApp(Gtk.Window):
         nb.append_page(self._build_website_tab(), Gtk.Label(label='Website'))
         nb.append_page(self._build_network_tab(), Gtk.Label(label='Network'))
         nb.append_page(self._build_wifi_tab(),    Gtk.Label(label='WiFi'))
+
+        # Connect focus tracking to every text entry so the OSK knows which
+        # field to restore focus to after onboard steals it on launch.
+        for entry in [self._url_entry, self._wifi_pwd, self._ap_ssid,
+                      self._ap_pwd, *self._net_entries.values()]:
+            entry.connect('focus-in-event', self._on_entry_focus)
 
         # Status bar
         self._status = Gtk.Label(label='')
@@ -216,13 +224,26 @@ class KioskConfigApp(Gtk.Window):
                 cmd = ['onboard']
                 cmd.extend(_onboard_geometry())
                 subprocess.Popen(cmd)
-                # Restore focus to this window so keyboard input reaches the
-                # text entries after onboard has taken focus on launch.
-                GLib.timeout_add(_FOCUS_RESTORE_MS, lambda: self.present() or False)
+                # After onboard finishes starting up (and stealing focus),
+                # restore focus to the last active text entry so that OSK
+                # keystrokes go to that field rather than the button.
+                GLib.timeout_add(_FOCUS_RESTORE_MS, self._restore_entry_focus)
         except FileNotFoundError:
             self._set_status('onboard is not installed', error=True)
         except Exception as exc:
             self._set_status(str(exc), error=True)
+
+    def _on_entry_focus(self, entry, _event):
+        """Record the most recently focused entry for OSK focus restoration."""
+        self._last_focused_entry = entry
+        return False  # do not consume the event
+
+    def _restore_entry_focus(self):
+        """Re-focus the last active entry so onboard keystrokes go there."""
+        target = self._last_focused_entry or self._url_entry
+        self.present()
+        target.grab_focus()
+        return False  # one-shot
 
     # ------------------------------------------------------------------
     # Website tab
