@@ -38,6 +38,8 @@ _BUTTON_W = 90
 _BUTTON_H = 50
 _MARGIN   = 10
 _SPACING  = 4
+# Height (pixels) used when positioning the onboard on-screen keyboard.
+_ONBOARD_H = 200
 # Milliseconds to wait after the 'map' signal before calling move(), giving the
 # window manager time to complete its initial window placement.
 _WM_SETTLE_MS = 100
@@ -47,6 +49,31 @@ _CHROMIUM_POLL_MS = 500
 # button always appears even when xdotool cannot detect the window class).
 # 60 polls × 500 ms = 30 seconds.
 _CHROMIUM_POLL_MAX = 60
+
+
+def _onboard_geometry():
+    """Return a --geometry argument to position onboard at the bottom of the screen.
+
+    Computes the screen dimensions from the primary monitor so that onboard
+    spans the full screen width and sits flush with the bottom edge.
+    Returns None if the display cannot be queried (falls back to onboard's
+    own default placement).
+    """
+    try:
+        display = Gdk.Display.get_default()
+        if display is None:
+            return None
+        monitor = display.get_primary_monitor() or display.get_monitor(0)
+        if monitor is None:
+            return None
+        geo = monitor.get_geometry()
+        scale = monitor.get_scale_factor()
+        kbd_w = int(geo.width * scale)
+        x = geo.x
+        y = geo.y + int(geo.height * scale) - _ONBOARD_H
+        return '--geometry={}x{}+{}+{}'.format(kbd_w, _ONBOARD_H, x, y)
+    except Exception:
+        return None
 
 
 class ExitOverlay(Gtk.Window):
@@ -236,8 +263,12 @@ class ExitOverlay(Gtk.Window):
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
         else:
-            # onboard is not running — start it
-            subprocess.Popen(['onboard'])
+            # onboard is not running — start it at the bottom of the screen
+            cmd = ['onboard']
+            geo = _onboard_geometry()
+            if geo:
+                cmd.append(geo)
+            subprocess.Popen(cmd)
 
     def _on_exit(self, _btn):
         self.hide()
