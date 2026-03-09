@@ -1,0 +1,69 @@
+# Publish Kiosk release to DeploymentServer
+#
+# Place this file at:
+#   A-McCutcheon/01.Kiosk/.github/workflows/publish-to-deployment-server.yml
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   DEPLOYMENT_SERVER_URL        — base URL of the server, e.g. https://myapp.azurewebsites.net
+#   DEPLOYMENT_SERVER_API_KEY    — matches the API_KEY env var set on the server
+#   DEPLOYMENT_SERVER_PACKAGE_ID — the UUID of the "kiosk" package already created via the
+#                                  management UI (GET /api/packages shows all package IDs)
+
+name: Publish to DeploymentServer
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  publish:
+    name: Package & upload new version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Use the short commit SHA as the version string so each push produces a
+      # unique, traceable version without requiring manual version bumps.
+      - name: Set version
+        id: version
+        run: echo "version=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      # Bundle the entire repository into a single zip archive. The agent will
+      # extract this to /opt/kiosk on the device (type: archive).
+      - name: Create release archive
+        run: |
+          zip -r kiosk-${{ steps.version.outputs.version }}.zip . \
+            --exclude ".git/*" --exclude ".git/**/*" \
+            --exclude ".github/*" --exclude ".github/**/*"
+
+      # Upload the archive as a new version on the DeploymentServer.
+      # The server stores the SHA-256 checksum automatically.
+      # A 409 response (version already exists) is treated as success so that
+      # re-runs of the same commit do not fail.
+      - name: Upload to DeploymentServer
+        run: |
+          HTTP_STATUS=$(curl -s -o response.json -w "%{http_code}" \
+            -X POST \
+            "${{ secrets.DEPLOYMENT_SERVER_URL }}/api/packages/${{ secrets.DEPLOYMENT_SERVER_PACKAGE_ID }}/versions" \
+            -H "x-api-key: ${{ secrets.DEPLOYMENT_SERVER_API_KEY }}" \
+            -F "version=${{ steps.version.outputs.version }}" \
+            -F "notes=Auto-published from commit ${{ github.sha }}" \
+            -F "file=@kiosk-${{ steps.version.outputs.version }}.zip")
+
+          echo "Server responded with HTTP $HTTP_STATUS"
+          cat response.json
+
+          if [ "$HTTP_STATUS" -eq 409 ]; then
+            echo "Version already exists on server — skipping."
+            exit 0
+          fi
+
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "Upload failed."
+            exit 1
+          fi
+
+          echo "Upload successful."
