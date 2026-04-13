@@ -141,9 +141,6 @@ binding='<Control><Alt>c'
 
 [org/gnome/desktop/a11y/applications]
 screen-keyboard-enabled=true
-
-[org/gnome/mutter]
-unredirect-fullscreen-windows=false
 EOF
 
 # Compile the dconf database
