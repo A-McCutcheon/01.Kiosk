@@ -38,8 +38,6 @@ _BUTTON_W = 90
 _BUTTON_H = 50
 _MARGIN   = 10
 _SPACING  = 4
-# Height (pixels) used when positioning the onboard on-screen keyboard.
-_ONBOARD_H = 200
 # Milliseconds to wait after the 'map' signal before calling move(), giving the
 # window manager time to complete its initial window placement.
 _WM_SETTLE_MS = 100
@@ -49,31 +47,6 @@ _CHROMIUM_POLL_MS = 500
 # button always appears even when xdotool cannot detect the window class).
 # 60 polls × 500 ms = 30 seconds.
 _CHROMIUM_POLL_MAX = 60
-
-
-def _onboard_geometry():
-    """Return geometry arguments to position onboard at the bottom of the screen.
-
-    Computes the screen dimensions from the primary monitor so that onboard
-    spans the full screen width and sits flush with the bottom edge.
-    Returns an empty list if the display cannot be queried (falls back to
-    onboard's own default placement).
-    """
-    try:
-        display = Gdk.Display.get_default()
-        if display is None:
-            return []
-        monitor = display.get_primary_monitor() or display.get_monitor(0)
-        if monitor is None:
-            return []
-        geo = monitor.get_geometry()
-        scale = monitor.get_scale_factor()
-        kbd_w = int(geo.width * scale)
-        x = geo.x
-        y = geo.y + int(geo.height * scale) - _ONBOARD_H
-        return ['-x', str(x), '-y', str(y), '-s', '{}x{}'.format(kbd_w, _ONBOARD_H)]
-    except Exception:
-        return []
 
 
 class ExitOverlay(Gtk.Window):
@@ -107,7 +80,11 @@ class ExitOverlay(Gtk.Window):
 
         btn_kbd = Gtk.Button(label='⌨ Keyboard')
         btn_kbd.set_size_request(_BUTTON_W, _BUTTON_H)
-        btn_kbd.set_tooltip_text('Toggle on-screen keyboard')
+        btn_kbd.set_tooltip_text(
+            'Use the GNOME built-in Screen Keyboard:\n'
+            'swipe up from the bottom of the screen,\n'
+            'or enable via Settings → Accessibility → Typing → Screen Keyboard'
+        )
         btn_kbd.connect('clicked', self._on_keyboard)
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=_SPACING)
@@ -251,22 +228,29 @@ class ExitOverlay(Gtk.Window):
         Gtk.main_quit()
 
     def _on_keyboard(self, _btn):
-        """Toggle the on-screen keyboard (onboard)."""
-        result = subprocess.run(
-            ['pgrep', '-x', 'onboard'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        """Show a reminder about the GNOME built-in Screen Keyboard.
+
+        The GNOME Screen Keyboard is the recommended on-screen keyboard on
+        Ubuntu 24.04 GNOME Shell under Wayland.  Enable it via:
+          Settings → Accessibility → Typing → Screen Keyboard
+        Then swipe up from the bottom of the screen to show it.
+
+        Onboard is no longer launched by this button.
+        """
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text='GNOME Screen Keyboard',
         )
-        if result.returncode == 0:
-            # onboard is running — close it
-            subprocess.run(
-                ['pkill', '-x', 'onboard'],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-        else:
-            # onboard is not running — start it at the bottom of the screen
-            cmd = ['onboard']
-            cmd.extend(_onboard_geometry())
-            subprocess.Popen(cmd)
+        dialog.format_secondary_text(
+            'Swipe up from the bottom of the screen to show the keyboard.\n\n'
+            'If it does not appear, enable it first:\n'
+            'Settings → Accessibility → Typing → Screen Keyboard → On'
+        )
+        dialog.run()
+        dialog.destroy()
 
     def _on_exit(self, _btn):
         self.hide()

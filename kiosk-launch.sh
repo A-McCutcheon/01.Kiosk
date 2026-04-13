@@ -55,9 +55,19 @@ fi
 # ── Launch Chromium in background ──────────────────────────────────────────
 # Running in background lets us start the overlay after Chromium's kiosk
 # window has appeared, so the overlay is visible above it.
+#
+# --app="${URL}"            – launches as a standalone app window (no browser
+#                             UI); keeps GNOME/Wayland from dropping back to a
+#                             normal window when the OSK or overview animates.
+# --start-fullscreen        – ensures the window enters fullscreen even if
+#                             --kiosk alone is not honoured by the compositor.
+# --no-default-browser-check – suppresses the "make Chromium your default
+#                             browser?" bar that can break the kiosk layout.
 "${BROWSER}" \
     --kiosk \
+    --start-fullscreen \
     --no-first-run \
+    --no-default-browser-check \
     --disable-infobars \
     --disable-translate \
     --disable-suggestions-service \
@@ -65,8 +75,7 @@ fi
     --disable-session-crashed-bubble \
     --noerrdialogs \
     --incognito \
-    --window-position=0,0 \
-    "${URL}" &
+    --app="${URL}" &
 CHROMIUM_PID=$!
 
 # ── Wait for Chromium process to start, then launch the overlay ───────────
