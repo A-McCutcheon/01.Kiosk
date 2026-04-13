@@ -11,7 +11,7 @@
 #
 # What this script does
 # ─────────────────────
-#  1. Installs required packages (Chromium, Python 3 + GTK bindings)
+#  1. Installs required packages (Firefox, Python 3 + GTK bindings)
 #  2. Creates the kiosk OS user with a locked password
 #  3. Grants the kiosk user password-less nmcli access (sudoers)
 #  4. Copies the kiosk scripts to /opt/kiosk
@@ -41,7 +41,7 @@ echo ""
 
 # ── 1. Packages ────────────────────────────────────────────────────────────
 echo "[1/6] Checking required packages…"
-REQUIRED_PKGS=(chromium-browser python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager dnsmasq xdotool)
+REQUIRED_PKGS=(firefox python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager dnsmasq xdotool)
 # onboard is no longer required.  The recommended on-screen keyboard on
 # Ubuntu 24.04 GNOME Shell is the built-in GNOME Screen Keyboard (enable via
 # Settings → Accessibility → Typing → Screen Keyboard).  If you need the
@@ -115,7 +115,7 @@ chown -R "${KIOSK_USER}:${KIOSK_USER}" "${KIOSK_HOME}/.config"
 echo "      Wrote ${AUTOSTART_DIR}/kiosk.desktop"
 
 # ── 6. Ctrl+Alt+C break-out shortcut ──────────────────────────────────────
-echo "[6/6] Registering Ctrl+Alt+C keyboard shortcut…"
+echo "[6/6] Registering Ctrl+Alt+C keyboard shortcut and Firefox policies…"
 # gsettings must run as the target user inside a D-Bus session.
 # At install time there is no live user session, so we write the shortcut
 # into the user's dconf database directly via a profile override file.
@@ -150,6 +150,28 @@ if command -v dconf &>/dev/null; then
 else
     echo "      WARNING: dconf not found; settings will be applied on first login."
 fi
+
+# ── Firefox policies ───────────────────────────────────────────────────────
+# Suppress first-run pages, default-browser prompts, and telemetry so the
+# kiosk opens cleanly on every boot.  /etc/firefox/policies/policies.json
+# is read by both the deb and snap packages of Firefox.
+FIREFOX_POLICY_DIR="/etc/firefox/policies"
+mkdir -p "${FIREFOX_POLICY_DIR}"
+cat > "${FIREFOX_POLICY_DIR}/policies.json" <<'EOF'
+{
+  "policies": {
+    "DisableTelemetry": true,
+    "DisableFirefoxStudies": true,
+    "OverrideFirstRunPage": "",
+    "OverridePostUpdatePage": "",
+    "DontCheckDefaultBrowser": true,
+    "NoDefaultBookmarks": true,
+    "DisplayBookmarksToolbar": "never",
+    "DisplayMenuBar": "default-off"
+  }
+}
+EOF
+echo "      Firefox policies written to ${FIREFOX_POLICY_DIR}/policies.json"
 
 # ── Summary ────────────────────────────────────────────────────────────────
 echo ""

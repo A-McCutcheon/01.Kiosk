@@ -9,10 +9,10 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_APP="${SCRIPT_DIR}/kiosk-config/config_app.py"
 
-# Kill any running Chromium instance
-pkill -x chromium-browser          2>/dev/null || \
-pkill -x chromium                  2>/dev/null || \
-pkill -f 'chromium.*--kiosk'       2>/dev/null || true
+# Kill any running Firefox instance
+pkill -x firefox                   2>/dev/null || \
+pkill -x firefox-esr               2>/dev/null || \
+pkill -f 'firefox.*--kiosk'        2>/dev/null || true
 
 # Kill the exit overlay if it is running (it may have already exited if the
 # user clicked its button, in which case pkill exits non-zero – that is fine)

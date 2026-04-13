@@ -11,7 +11,7 @@ an operator configuration app for network settings and URL management.
 | Feature | Details |
 |---|---|
 | **Auto login** | Configures GDM3 or LightDM to log in automatically as the kiosk user on boot |
-| **Website launcher** | Opens a configured URL in Chromium kiosk mode (full-screen, no address bar) |
+| **Website launcher** | Opens a configured URL in Firefox kiosk mode (full-screen, no address bar) |
 | **Break-out shortcut** | Press **Ctrl+Alt+C** at any time to close the browser and reopen the config app |
 | **Break-out button** | Tap or click the **⚙ Exit** button (bottom-right corner, always visible) — works on touchscreens and in VirtualBox |
 | **Shutdown button** | Tap or click the **⏻ Shutdown** button (above the Exit button) to power off the system with a confirmation prompt |
@@ -27,7 +27,7 @@ an operator configuration app for network settings and URL management.
 1.Kiosk/
 ├── install.sh              # Run once as root to install everything
 ├── uninstall.sh            # Removes the installation
-├── kiosk-launch.sh         # Launches Chromium in kiosk mode (or config app if no URL set)
+├── kiosk-launch.sh         # Launches Firefox in kiosk mode (or config app if no URL set)
 ├── kiosk-break.sh          # Kills the browser and reopens the config app
 ├── kiosk-exit-overlay.py   # Always-on-top exit button (touchscreen / VirtualBox)
 ├── kiosk-diag.sh           # Diagnostic script – run if autologin is not working
@@ -45,8 +45,8 @@ an operator configuration app for network settings and URL management.
 
 - Ubuntu Desktop **22.04 LTS** or **24.04 LTS** (or any Ubuntu Desktop LTS release using GDM3 or LightDM)
 - **Ubuntu 24.04 GNOME Shell**: run under **Wayland** (the default) for best on-screen keyboard support (see [On-Screen Keyboard](#on-screen-keyboard) below).
-- The following packages must be installed: `chromium-browser`, `python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-3.0`, `network-manager`  
-  On Ubuntu Desktop LTS, all packages except `chromium-browser` are pre-installed.  
+- The following packages must be installed: `firefox`, `python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-3.0`, `network-manager`  
+  On Ubuntu Desktop LTS, all packages except `firefox` are pre-installed.  
   If all required packages are already installed (or pre-loaded on the machine), **no internet access is required** during installation.
 
 ---
@@ -64,7 +64,7 @@ After installation:
 2. Ubuntu logs in automatically as the kiosk user.
 3. The **configuration app** opens on first login (no URL is set yet).
 4. Enter the website URL on the **Website** tab and click **Launch Kiosk**.
-5. Chromium opens full-screen showing the configured site.
+5. Firefox opens full-screen showing the configured site.
 6. Press **Ctrl+Alt+C** at any time to close the browser and return to the config app.  
    Alternatively, tap or click the **⚙ Exit** button in the bottom-right corner of the screen.
    To power off the device, tap or click the **⏻ Shutdown** button directly above the Exit button.
@@ -78,8 +78,8 @@ The config app has three tabs:
 ### Website tab
 - Enter the URL to display (e.g. `https://intranet.company.com`).
 - **Save URL** – persists the URL to `~/.config/kiosk/kiosk.conf`.
-- **Launch Kiosk** – saves the URL and starts Chromium in kiosk mode.
-- **Restart Kiosk** – kills any running Chromium instance and relaunches it.
+- **Launch Kiosk** – saves the URL and starts Firefox in kiosk mode.
+- **Restart Kiosk** – kills any running Firefox instance and relaunches it.
 - **Reboot Device** – prompts for confirmation then reboots the device.
 
 ### Network tab
@@ -126,7 +126,7 @@ There are two ways to exit kiosk mode and return to the configuration app:
 
 2. **Keyboard shortcut** – Press **Ctrl+Alt+C** while the kiosk browser is open.
    This shortcut is registered as a GNOME system shortcut during installation and
-   works even when Chromium has keyboard focus.
+   works even when Firefox has keyboard focus.
 
 The browser closes and the configuration app reopens automatically.
 
@@ -187,7 +187,7 @@ All components used are permitted for **commercial deployment**:
 | Python 3 | PSF License 2 | ✅ Permissive |
 | PyGObject (python3-gi) | LGPL 2.1+ | ✅ Dynamic linking — no source obligation |
 | GTK 3 | LGPL 2.1+ | ✅ Dynamic linking — no source obligation |
-| Chromium | BSD 3-Clause | ✅ Permissive |
+| Firefox | MPL 2.0 | ✅ Permissive |
 | NetworkManager / nmcli | GPL 2 | ✅ Used as an unmodified system tool; GPL applies only to distribution of modified source |
 | Ubuntu Desktop LTS | Mixed (Canonical) | ✅ Standard commercial deployment permitted |
 
