@@ -500,10 +500,10 @@ class KioskConfigApp(Gtk.Window):
 
     def _on_restart_kiosk(self, _btn):
         self._set_status('Restarting kiosk…')
-        # Kill any running Chromium instance then relaunch
-        subprocess.run(['pkill', '-x', 'chromium-browser'],
+        # Kill any running Firefox instance then relaunch
+        subprocess.run(['pkill', '-x', 'firefox'],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(['pkill', '-x', 'chromium'],
+        subprocess.run(['pkill', '-x', 'firefox-esr'],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         here   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         script = os.path.join(here, 'kiosk-launch.sh')

@@ -6,4 +6,5 @@ Exec=/opt/kiosk/kiosk-launch.sh
 Terminal=false
 Hidden=false
 NoDisplay=false
-X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-enabled=false
+X-GNOME-Autostart-Delay=5
