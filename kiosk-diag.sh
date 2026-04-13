@@ -36,9 +36,13 @@ else
         && _ok  "AutomaticLogin=${KIOSK_USER}" \
         || _fail "AutomaticLogin not set to '${KIOSK_USER}' in /etc/gdm3/custom.conf"
 
-    grep -qE '^\s*WaylandEnable\s*=\s*false' /etc/gdm3/custom.conf \
-        && _ok  "WaylandEnable=false (X11 enforced for VM/VirtualBox compatibility)" \
-        || _fail "WaylandEnable=false missing – Wayland session may crash in VMs/VirtualBox"
+    if grep -qE '^\s*WaylandEnable\s*=\s*false' /etc/gdm3/custom.conf; then
+        echo "  ℹ  WaylandEnable=false detected – running in X11 mode."
+        echo "     X11 mode may prevent GNOME OSK swipe gestures from working."
+        echo "     Remove the WaylandEnable=false line to re-enable Wayland (recommended)."
+    else
+        _ok  "Wayland enabled (recommended for GNOME on-screen keyboard support)"
+    fi
 
     echo ""
     echo "  Full [daemon] section of /etc/gdm3/custom.conf:"

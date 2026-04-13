@@ -56,15 +56,20 @@ fi
 # Running in background lets us start the overlay after Chromium's kiosk
 # window has appeared, so the overlay is visible above it.
 #
+# NOTE: --kiosk is intentionally NOT used here.  On X11, Chromium's --kiosk
+# mode repeatedly calls XRaiseWindow to keep its fullscreen window on top.
+# This immediately pushes the GNOME on-screen keyboard behind Chromium each
+# time the user swipes it up.  The combination of --app and --start-fullscreen
+# provides equivalent kiosk UX (no address bar, fullscreen window) without
+# the aggressive focus/z-order behaviour that blocks the OSK.
+#
 # --app="${URL}"            – launches as a standalone app window (no browser
 #                             UI); keeps GNOME/Wayland from dropping back to a
 #                             normal window when the OSK or overview animates.
-# --start-fullscreen        – ensures the window enters fullscreen even if
-#                             --kiosk alone is not honoured by the compositor.
+# --start-fullscreen        – ensures the window enters fullscreen.
 # --no-default-browser-check – suppresses the "make Chromium your default
 #                             browser?" bar that can break the kiosk layout.
 "${BROWSER}" \
-    --kiosk \
     --start-fullscreen \
     --no-first-run \
     --no-default-browser-check \
