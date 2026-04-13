@@ -98,7 +98,7 @@ fi
     --disable-session-crashed-bubble \
     --noerrdialogs \
     --incognito \
-    "${PLATFORM_FLAGS[@]}" \
+    "${PLATFORM_FLAGS[@]+"${PLATFORM_FLAGS[@]}"}" \
     --app="${URL}" &
 CHROMIUM_PID=$!
 
