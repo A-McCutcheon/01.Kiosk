@@ -62,14 +62,16 @@ fi
 # focus/expose event and the display stays black until something (e.g.
 # Alt+Tab) triggers one.
 #
-# gdbus wait --session --activate waits until the named D-Bus service is
-# available (adaptive — exits immediately if Shell is already running, waits
-# up to 30 s otherwise).  The extra sleep gives Mutter a moment to complete
-# its startup animation before Firefox claims the fullscreen surface.
+# gdbus wait --session --timeout N NAME blocks until the named D-Bus service
+# appears (exits immediately if already present, or after N seconds at most).
+# NOTE: NAME is a required positional argument; without it the command fails
+# immediately and silently if error output is suppressed — making the wait
+# a no-op.  The extra sleep gives Mutter time to finish its startup animation
+# before Firefox claims the fullscreen surface.
 if command -v gdbus &>/dev/null; then
-    gdbus wait --session --activate org.gnome.Shell --timeout 30 2>/dev/null || true
-    sleep 2
+    gdbus wait --session --timeout 30 org.gnome.Shell 2>/dev/null || true
 fi
+sleep 5
 
 # ── Launch Firefox in background ───────────────────────────────────────────
 # Firefox is a native GTK/Wayland app: it runs as a native Wayland client
