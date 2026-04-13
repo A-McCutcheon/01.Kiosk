@@ -55,6 +55,22 @@ if [[ -z "${BROWSER}" ]]; then
     exit 1
 fi
 
+# ── Wait for GNOME Shell compositor to be ready ───────────────────────────
+# The kiosk autostart may execute while GNOME Shell is still completing its
+# session-start animation.  If Firefox is launched before Mutter has finished
+# its first-frame setup, the fullscreen window never receives an initial
+# focus/expose event and the display stays black until something (e.g.
+# Alt+Tab) triggers one.
+#
+# gdbus wait --session --activate waits until the named D-Bus service is
+# available (adaptive — exits immediately if Shell is already running, waits
+# up to 30 s otherwise).  The extra sleep gives Mutter a moment to complete
+# its startup animation before Firefox claims the fullscreen surface.
+if command -v gdbus &>/dev/null; then
+    gdbus wait --session --activate org.gnome.Shell --timeout 30 2>/dev/null || true
+    sleep 2
+fi
+
 # ── Launch Firefox in background ───────────────────────────────────────────
 # Firefox is a native GTK/Wayland app: it runs as a native Wayland client
 # automatically when WAYLAND_DISPLAY is set, with no extra flags required.
