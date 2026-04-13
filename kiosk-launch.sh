@@ -107,43 +107,65 @@ MOZ_WEBRENDER=0 "${BROWSER}" \
     "${URL}" &
 FIREFOX_PID=$!
 
-# ── Post-launch: activate Firefox window on Wayland ──────────────────────
-# On Wayland, fullscreen windows started from a shell script carry no XDG
-# activation token, so GNOME Shell's focus-stealing prevention may decline
-# to focus the new window automatically — leaving the screen black until an
-# external event (e.g. Alt+Tab) delivers an activation.
+# ── Post-launch: wait for Firefox window and activate it ─────────────────
+# On Wayland, fullscreen windows started without an XDG activation token
+# may not receive automatic focus from GNOME Shell's focus-stealing
+# prevention, leaving the screen black until something (e.g. Alt+Tab)
+# delivers an activation event.
 #
-# This background job attempts to activate Firefox via two fallback paths:
-#  1. XWayland path   – xdotool windowactivate works when Firefox is running
-#                       as an XWayland client (e.g. MOZ_ENABLE_WAYLAND=0).
-#  2. Native Wayland  – org.gnome.Shell.Eval can focus a Wayland window via
-#                       GNOME Shell JavaScript.  Requires GNOME developer
-#                       mode (disabled by default in GNOME 41+); silently
-#                       ignored on production shells but safe to attempt.
+# Two bugs existed in the previous version of this block:
+#   1. DISPLAY was never set.  xdotool needs DISPLAY; when the script runs
+#      from a systemd user service DISPLAY is not automatically inherited,
+#      so every xdotool call failed silently.
+#   2. The search used --classname firefox, but Firefox's WM_CLASS instance
+#      name is "Navigator", not "firefox".  The search always returned empty.
+#
+# Fix: explicitly export DISPLAY (defaulting to :0 – XWayland's standard
+# display on GNOME), search for all known Firefox WM_CLASS patterns, and
+# poll until the window appears rather than sleeping a fixed interval.
+#
+# GNOME's Mutter compositor creates EWMH proxy entries for native Wayland
+# clients, so xdotool and wmctrl can find and activate Wayland windows via
+# the XWayland compatibility layer even when Firefox is not an X11 client.
 (
-    set +e  # errors are expected; failures are non-fatal
-    # Allow Firefox enough time to create its Wayland/XWayland surface.
-    # 4 s is sufficient for Firefox's first-paint on typical kiosk hardware;
-    # the attempt is best-effort and does not block the main kiosk process.
-    _ACTIVATION_DELAY=4
-    sleep "${_ACTIVATION_DELAY}"
-    # Path 1: XWayland – xdotool can directly activate X11 windows.
-    if command -v xdotool &>/dev/null; then
-        WIN_ID=$(xdotool search --classname firefox 2>/dev/null | head -1)
-        if [[ -n "${WIN_ID}" ]]; then
-            xdotool windowactivate --sync "${WIN_ID}" 2>/dev/null
-            exit 0
-        fi
+    set +e  # every command here is best-effort; failures must not abort the main script
+
+    # Ensure X display is set; XWayland always binds to :0 on a GNOME session.
+    _DISP="${DISPLAY:-:0}"
+
+    # Poll for Firefox's window to appear (up to 30s, 1s intervals).
+    # This replaces the previous fixed sleep and handles both fast and slow
+    # hardware without an arbitrary timeout.
+    _WIN_ID=""
+    for _i in $(seq 1 30); do
+        # Firefox's browser window WM_CLASS: instance="Navigator", class="Firefox".
+        # Try the most specific pattern first, then broader ones as fallback.
+        for _pat in "--classname Navigator" "--class Firefox" "--classname firefox"; do
+            # shellcheck disable=SC2086
+            _WIN_ID=$(DISPLAY="${_DISP}" xdotool search ${_pat} 2>/dev/null | head -1)
+            [[ -n "${_WIN_ID}" ]] && break 2
+        done
+        sleep 1
+    done
+
+    if [[ -n "${_WIN_ID}" ]]; then
+        # xdotool found the window via XWayland/EWMH – activate and focus it.
+        DISPLAY="${_DISP}" xdotool windowactivate --sync "${_WIN_ID}" 2>/dev/null || true
+        DISPLAY="${_DISP}" xdotool windowfocus   --sync "${_WIN_ID}" 2>/dev/null || true
+        exit 0
     fi
-    # Path 2: native Wayland – ask GNOME Shell to activate Firefox.
+
+    # Fallback: wmctrl – activate Firefox by WM_CLASS/title match.
+    # wmctrl uses the same EWMH interface so it works for Wayland windows too.
+    if command -v wmctrl &>/dev/null; then
+        DISPLAY="${_DISP}" wmctrl -xa Navigator 2>/dev/null || \
+        DISPLAY="${_DISP}" wmctrl -xa firefox   2>/dev/null || true
+        exit 0
+    fi
+
+    # Last resort: GNOME Shell Eval (disabled by default in GNOME 41+;
+    # silently rejected on production shells but safe to attempt).
     if command -v gdbus &>/dev/null; then
-        # GNOME Shell Eval requires developer mode (disabled by default in
-        # GNOME 41+). The call is safe to attempt; it is silently rejected
-        # on hardened production shells.
-        # Each part of the JS is on its own line for readability:
-        #   1. get all window actors in GNOME Shell
-        #   2. find the Firefox window by WM class (case-insensitive)
-        #   3. activate it with the current compositor timestamp
         _EVAL_JS="global.get_window_actors()"
         _EVAL_JS+=".find(a => a.meta_window.get_wm_class().toLowerCase().includes('firefox'))"
         _EVAL_JS+="?.meta_window.activate(global.display.get_current_time())"
@@ -152,7 +174,7 @@ FIREFOX_PID=$!
             --object-path /org/gnome/Shell \
             --method org.gnome.Shell.Eval \
             "${_EVAL_JS}" \
-            2>/dev/null
+            2>/dev/null || true
     fi
 ) &
 

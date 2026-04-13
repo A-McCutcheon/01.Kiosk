@@ -41,7 +41,7 @@ echo ""
 
 # ── 1. Packages ────────────────────────────────────────────────────────────
 echo "[1/6] Checking required packages…"
-REQUIRED_PKGS=(firefox python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager dnsmasq xdotool)
+REQUIRED_PKGS=(firefox python3-gi python3-gi-cairo gir1.2-gtk-3.0 network-manager dnsmasq xdotool wmctrl)
 # onboard is no longer required.  The recommended on-screen keyboard on
 # Ubuntu 24.04 GNOME Shell is the built-in GNOME Screen Keyboard (enable via
 # Settings → Accessibility → Typing → Screen Keyboard).  If you need the
