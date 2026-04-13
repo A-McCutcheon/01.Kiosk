@@ -113,33 +113,47 @@ FIREFOX_PID=$!
 # prevention, leaving the screen black until something (e.g. Alt+Tab)
 # delivers an activation event.
 #
-# Two bugs existed in the previous version of this block:
-#   1. DISPLAY was never set.  xdotool needs DISPLAY; when the script runs
-#      from a systemd user service DISPLAY is not automatically inherited,
-#      so every xdotool call failed silently.
-#   2. The search used --classname firefox, but Firefox's WM_CLASS instance
-#      name is "Navigator", not "firefox".  The search always returned empty.
+# The _NET_ACTIVE_WINDOW source field is the critical detail:
+#   source=0/1  application request — Mutter may REJECT this for Wayland-
+#               native clients when focus-stealing prevention is active.
+#   source=2    pager request       — EWMH mandates the WM MUST grant focus
+#               unconditionally for source=2.  wmctrl always sends source=2.
+#   xdotool windowactivate sends source=0 (old-style), which is silently
+#   ignored by Mutter on Wayland.  wmctrl -i -a sends source=2 and works.
 #
-# Fix: explicitly export DISPLAY (defaulting to :0 – XWayland's standard
-# display on GNOME), search for all known Firefox WM_CLASS patterns, and
-# poll until the window appears rather than sleeping a fixed interval.
-#
-# GNOME's Mutter compositor creates EWMH proxy entries for native Wayland
-# clients, so xdotool and wmctrl can find and activate Wayland windows via
-# the XWayland compatibility layer even when Firefox is not an X11 client.
+# XAUTHORITY must also be present for xdotool/wmctrl to connect to XWayland.
+# In a systemd user service the variable may not be propagated from the GNOME
+# session.  We probe its common location under $XDG_RUNTIME_DIR as a fallback.
 (
     set +e  # every command here is best-effort; failures must not abort the main script
 
-    # Ensure X display is set; XWayland always binds to :0 on a GNOME session.
+    # ── Environment setup ─────────────────────────────────────────────────
+    # DISPLAY: XWayland always binds to :0 on a standard GNOME session.
     _DISP="${DISPLAY:-:0}"
 
-    # Poll for Firefox's window to appear (up to 30s, 1s intervals).
-    # This replaces the previous fixed sleep and handles both fast and slow
-    # hardware without an arbitrary timeout.
+    # XAUTHORITY: required for xdotool/wmctrl to authenticate with XWayland.
+    # gnome-session exports this via dbus-update-activation-environment, but
+    # on some setups it may be absent.  Mutter writes its own XWayland auth
+    # file to $XDG_RUNTIME_DIR/.mutter-Xwaylandauth.<random-suffix>.
+    _XAUTH="${XAUTHORITY:-}"
+    if [[ -z "${_XAUTH}" ]]; then
+        _RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+        for _candidate in "${_RUNTIME}"/.mutter-Xwaylandauth.* \
+                          "${HOME}/.Xauthority"; do
+            if [[ -f "${_candidate}" ]]; then
+                _XAUTH="${_candidate}"
+                break
+            fi
+        done
+    fi
+    [[ -n "${_XAUTH}" ]] && export XAUTHORITY="${_XAUTH}"
+
+    # ── Wait for Firefox window to appear ─────────────────────────────────
+    # Poll up to 30s (1s intervals).  Firefox's browser window WM_CLASS:
+    #   instance = "Navigator"   class = "Firefox"
+    # Try the most reliable pattern first, then fall back to others.
     _WIN_ID=""
     for _i in $(seq 1 30); do
-        # Firefox's browser window WM_CLASS: instance="Navigator", class="Firefox".
-        # Try the most specific pattern first, then broader ones as fallback.
         for _pat in "--classname Navigator" "--class Firefox" "--classname firefox"; do
             # shellcheck disable=SC2086
             _WIN_ID=$(DISPLAY="${_DISP}" xdotool search ${_pat} 2>/dev/null | head -1)
@@ -148,34 +162,53 @@ FIREFOX_PID=$!
         sleep 1
     done
 
-    if [[ -n "${_WIN_ID}" ]]; then
-        # xdotool found the window via XWayland/EWMH – activate and focus it.
-        DISPLAY="${_DISP}" xdotool windowactivate --sync "${_WIN_ID}" 2>/dev/null || true
-        DISPLAY="${_DISP}" xdotool windowfocus   --sync "${_WIN_ID}" 2>/dev/null || true
-        exit 0
+    # ── Activate the window ───────────────────────────────────────────────
+    # PRIMARY: wmctrl -i -a sends _NET_ACTIVE_WINDOW with source=2 (pager).
+    # Mutter MUST honor source=2, bypassing focus-stealing prevention for
+    # both X11 and Wayland-native (via XWayland-bridge) client windows.
+    if [[ -n "${_WIN_ID}" ]] && command -v wmctrl &>/dev/null; then
+        # Validate _WIN_ID is a decimal integer before converting to hex.
+        if [[ "${_WIN_ID}" =~ ^[0-9]+$ ]]; then
+            _WIN_HEX="0x$(printf '%08x' "${_WIN_ID}")"
+            echo "kiosk-launch: activating Firefox window ${_WIN_HEX} via wmctrl (source=2)" >&2
+            DISPLAY="${_DISP}" wmctrl -i -a "${_WIN_HEX}" 2>/dev/null || true
+            exit 0
+        fi
     fi
 
-    # Fallback: wmctrl – activate Firefox by WM_CLASS/title match.
-    # wmctrl uses the same EWMH interface so it works for Wayland windows too.
+    # FALLBACK A: wmctrl by WM_CLASS name (when window-ID search failed).
     if command -v wmctrl &>/dev/null; then
-        DISPLAY="${_DISP}" wmctrl -xa Navigator 2>/dev/null || \
-        DISPLAY="${_DISP}" wmctrl -xa firefox   2>/dev/null || true
+        echo "kiosk-launch: window-ID search failed; activating by class name via wmctrl" >&2
+        DISPLAY="${_DISP}" wmctrl -xa Firefox   2>/dev/null || \
+        DISPLAY="${_DISP}" wmctrl -xa Navigator 2>/dev/null || true
         exit 0
     fi
 
-    # Last resort: GNOME Shell Eval (disabled by default in GNOME 41+;
-    # silently rejected on production shells but safe to attempt).
+    # FALLBACK B: xdotool windowactivate (source=0 – may be blocked by
+    # Mutter's focus-stealing prevention, but try anyway as last resort).
+    if [[ -n "${_WIN_ID}" ]]; then
+        echo "kiosk-launch: wmctrl unavailable; trying xdotool windowactivate (source=0)" >&2
+        DISPLAY="${_DISP}" xdotool windowactivate --sync "${_WIN_ID}" 2>/dev/null || true
+        DISPLAY="${_DISP}" xdotool windowfocus    --sync "${_WIN_ID}" 2>/dev/null || true
+        exit 0
+    fi
+
+    # FALLBACK C: GNOME Shell Eval (disabled by default in GNOME 41+;
+    # silently rejected on hardened shells, safe to attempt).
     if command -v gdbus &>/dev/null; then
-        _EVAL_JS="global.get_window_actors()"
-        _EVAL_JS+=".find(a => a.meta_window.get_wm_class().toLowerCase().includes('firefox'))"
-        _EVAL_JS+="?.meta_window.activate(global.display.get_current_time())"
+        echo "kiosk-launch: trying GNOME Shell Eval as final activation fallback" >&2
+        _JS="global.get_window_actors()"
+        _JS+=".find(a=>a.meta_window.get_wm_class()?.toLowerCase().includes('firefox'))"
+        _JS+="?.meta_window.activate(global.display.get_current_time())"
         gdbus call --session \
             --dest org.gnome.Shell \
             --object-path /org/gnome/Shell \
             --method org.gnome.Shell.Eval \
-            "${_EVAL_JS}" \
+            "${_JS}" \
             2>/dev/null || true
     fi
+
+    echo "kiosk-launch: all activation methods exhausted" >&2
 ) &
 
 # ── Wait for Firefox process to start, then launch the overlay ───────────
