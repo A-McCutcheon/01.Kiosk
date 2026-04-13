@@ -13,6 +13,20 @@
 
 set -euo pipefail
 
+# ── Single-instance guard ─────────────────────────────────────────────────
+# Prevents a double-start race when both the systemd user service and the
+# legacy .desktop autostart entry happen to fire in the same session.
+# flock acquires an exclusive lock on the lock-file; the second invocation
+# exits immediately rather than starting a second Firefox instance.
+# XDG_RUNTIME_DIR is user-private (mode 0700, tmpfs) so it is safe for
+# lock files; fall back to ~/.cache which is always user-specific.
+LOCK_FILE="${XDG_RUNTIME_DIR:-${HOME}/.cache}/kiosk-launch.lock"
+exec 9>"${LOCK_FILE}"
+if ! flock -n 9; then
+    echo "kiosk-launch.sh: another instance is already running; exiting." >&2
+    exit 0
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_FILE="${HOME}/.config/kiosk/kiosk.conf"
 CONFIG_APP="${SCRIPT_DIR}/kiosk-config/config_app.py"
@@ -92,6 +106,55 @@ MOZ_WEBRENDER=0 "${BROWSER}" \
     -no-remote \
     "${URL}" &
 FIREFOX_PID=$!
+
+# ── Post-launch: activate Firefox window on Wayland ──────────────────────
+# On Wayland, fullscreen windows started from a shell script carry no XDG
+# activation token, so GNOME Shell's focus-stealing prevention may decline
+# to focus the new window automatically — leaving the screen black until an
+# external event (e.g. Alt+Tab) delivers an activation.
+#
+# This background job attempts to activate Firefox via two fallback paths:
+#  1. XWayland path   – xdotool windowactivate works when Firefox is running
+#                       as an XWayland client (e.g. MOZ_ENABLE_WAYLAND=0).
+#  2. Native Wayland  – org.gnome.Shell.Eval can focus a Wayland window via
+#                       GNOME Shell JavaScript.  Requires GNOME developer
+#                       mode (disabled by default in GNOME 41+); silently
+#                       ignored on production shells but safe to attempt.
+(
+    set +e  # errors are expected; failures are non-fatal
+    # Allow Firefox enough time to create its Wayland/XWayland surface.
+    # 4 s is sufficient for Firefox's first-paint on typical kiosk hardware;
+    # the attempt is best-effort and does not block the main kiosk process.
+    _ACTIVATION_DELAY=4
+    sleep "${_ACTIVATION_DELAY}"
+    # Path 1: XWayland – xdotool can directly activate X11 windows.
+    if command -v xdotool &>/dev/null; then
+        WIN_ID=$(xdotool search --classname firefox 2>/dev/null | head -1)
+        if [[ -n "${WIN_ID}" ]]; then
+            xdotool windowactivate --sync "${WIN_ID}" 2>/dev/null
+            exit 0
+        fi
+    fi
+    # Path 2: native Wayland – ask GNOME Shell to activate Firefox.
+    if command -v gdbus &>/dev/null; then
+        # GNOME Shell Eval requires developer mode (disabled by default in
+        # GNOME 41+). The call is safe to attempt; it is silently rejected
+        # on hardened production shells.
+        # Each part of the JS is on its own line for readability:
+        #   1. get all window actors in GNOME Shell
+        #   2. find the Firefox window by WM class (case-insensitive)
+        #   3. activate it with the current compositor timestamp
+        _EVAL_JS="global.get_window_actors()"
+        _EVAL_JS+=".find(a => a.meta_window.get_wm_class().toLowerCase().includes('firefox'))"
+        _EVAL_JS+="?.meta_window.activate(global.display.get_current_time())"
+        gdbus call --session \
+            --dest org.gnome.Shell \
+            --object-path /org/gnome/Shell \
+            --method org.gnome.Shell.Eval \
+            "${_EVAL_JS}" \
+            2>/dev/null
+    fi
+) &
 
 # ── Wait for Firefox process to start, then launch the overlay ───────────
 # The overlay itself polls (via xdotool) until Firefox's window is on

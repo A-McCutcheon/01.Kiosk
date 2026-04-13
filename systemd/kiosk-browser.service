@@ -1,0 +1,19 @@
+[Unit]
+Description=Kiosk Browser
+Documentation=https://github.com/A-McCutcheon/01.Kiosk
+# graphical-session.target is set active by gnome-session once GNOME Shell
+# (including the Mutter compositor) has completed its startup handshake.
+# Using After= here guarantees Firefox is never launched before the compositor
+# is ready, eliminating the black-screen startup race that occurs when the
+# browser opens a fullscreen Wayland surface too early.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/opt/kiosk/kiosk-launch.sh
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=graphical-session.target

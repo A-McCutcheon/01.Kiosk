@@ -106,13 +106,28 @@ chmod +x "${INSTALL_DIR}/kiosk-diag.sh"
 chmod +x "${INSTALL_DIR}/kiosk-config/config_app.py"
 echo "      Done."
 
-# ── 5. GNOME autostart ─────────────────────────────────────────────────────
-echo "[5/6] Configuring GNOME autostart…"
+# ── 5. GNOME autostart & systemd user service ─────────────────────────────
+echo "[5/6] Configuring kiosk autostart…"
 AUTOSTART_DIR="${KIOSK_HOME}/.config/autostart"
-mkdir -p "${AUTOSTART_DIR}"
+SYSTEMD_USER_DIR="${KIOSK_HOME}/.config/systemd/user"
+SYSTEMD_WANTS_DIR="${SYSTEMD_USER_DIR}/graphical-session.target.wants"
+mkdir -p "${AUTOSTART_DIR}" "${SYSTEMD_WANTS_DIR}"
+
+# Install the systemd user service (preferred over .desktop autostart).
+# The service uses After=graphical-session.target which is only reached by
+# gnome-session once GNOME Shell and the Mutter compositor have completed
+# their startup handshake — eliminating the compositor-race black screen.
+cp "${SCRIPT_DIR}/systemd/kiosk-browser.service" "${SYSTEMD_USER_DIR}/kiosk-browser.service"
+ln -sf "../kiosk-browser.service" "${SYSTEMD_WANTS_DIR}/kiosk-browser.service"
+echo "      Installed systemd user service: ${SYSTEMD_USER_DIR}/kiosk-browser.service"
+
+# Deploy the .desktop autostart entry (disabled in source; the systemd
+# service is the sole startup mechanism).  kiosk-launch.sh also uses a
+# flock guard so a second launch exits cleanly if both entries are active.
 cp "${SCRIPT_DIR}/autostart/kiosk.desktop" "${AUTOSTART_DIR}/"
+echo "      Wrote ${AUTOSTART_DIR}/kiosk.desktop (autostart disabled – service is primary)"
+
 chown -R "${KIOSK_USER}:${KIOSK_USER}" "${KIOSK_HOME}/.config"
-echo "      Wrote ${AUTOSTART_DIR}/kiosk.desktop"
 
 # ── 6. Ctrl+Alt+C break-out shortcut ──────────────────────────────────────
 echo "[6/6] Registering Ctrl+Alt+C keyboard shortcut and Firefox policies…"
@@ -141,6 +156,21 @@ binding='<Control><Alt>c'
 
 [org/gnome/desktop/a11y/applications]
 screen-keyboard-enabled=true
+
+# ── Prevent screen blanking and lock on a kiosk display ──────────────────
+[org/gnome/settings-daemon/plugins/power]
+sleep-inactive-ac-timeout=0
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-timeout=0
+sleep-inactive-battery-type='nothing'
+idle-dim=false
+
+[org/gnome/desktop/screensaver]
+lock-enabled=false
+idle-activation-enabled=false
+
+[org/gnome/desktop/session]
+idle-delay=uint32 0
 EOF
 
 # Compile the dconf database
@@ -197,6 +227,9 @@ echo "     Or tap/click the on-screen '⚙ Exit' button (bottom-right corner)."
 echo "     Or tap/click the on-screen '⏻ Shutdown' button to power off."
 echo "  4. Use GNOME's built-in Screen Keyboard (swipe up from the bottom, or enable via"
 echo "     Settings → Accessibility → Typing → Screen Keyboard)."
+echo "  Note: the kiosk browser is now started by a systemd user service"
+echo "        (graphical-session.target.wants/kiosk-browser.service)."
+echo "        The .desktop autostart entry has been disabled to prevent a double-launch."
 echo ""
 echo "  Rebooting now…"
 sleep 3

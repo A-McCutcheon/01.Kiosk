@@ -42,11 +42,13 @@ fi
 command -v dconf &>/dev/null && dconf update || true
 echo "      Done."
 
-# 4. Remove autostart entry for kiosk user
-echo "[4/4] Removing autostart entry…"
+# 4. Remove autostart entry and systemd user service for kiosk user
+echo "[4/4] Removing autostart entry and systemd service…"
 KIOSK_HOME="$(getent passwd "${KIOSK_USER}" 2>/dev/null | cut -d: -f6 || echo "")"
-if [[ -n "${KIOSK_HOME}" && -f "${KIOSK_HOME}/.config/autostart/kiosk.desktop" ]]; then
+if [[ -n "${KIOSK_HOME}" ]]; then
     rm -f "${KIOSK_HOME}/.config/autostart/kiosk.desktop"
+    rm -f "${KIOSK_HOME}/.config/systemd/user/kiosk-browser.service"
+    rm -f "${KIOSK_HOME}/.config/systemd/user/graphical-session.target.wants/kiosk-browser.service"
 fi
 echo "      Done."
 
