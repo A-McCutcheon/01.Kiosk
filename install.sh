@@ -129,7 +129,7 @@ user-db:user
 system-db:kiosk
 EOF
 
-# Database: define the custom keybinding
+# Database: define the custom keybinding and accessibility settings
 cat > "${DCONF_DB_DIR}/00-kiosk-keybindings" <<'EOF'
 [org/gnome/settings-daemon/plugins/media-keys]
 custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/']
@@ -138,6 +138,9 @@ custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybin
 name='Kiosk Config'
 command='/opt/kiosk/kiosk-break.sh'
 binding='<Control><Alt>c'
+
+[org/gnome/desktop/a11y/applications]
+screen-keyboard-enabled=true
 EOF
 
 # Compile the dconf database
