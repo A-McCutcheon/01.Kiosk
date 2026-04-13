@@ -44,6 +44,7 @@ an operator configuration app for network settings and URL management.
 ## Requirements
 
 - Ubuntu Desktop **22.04 LTS** or **24.04 LTS** (or any Ubuntu Desktop LTS release using GDM3 or LightDM)
+- **Ubuntu 24.04 GNOME Shell**: run under **Wayland** (the default) for best on-screen keyboard support (see [On-Screen Keyboard](#on-screen-keyboard) below).
 - The following packages must be installed: `chromium-browser`, `python3-gi`, `python3-gi-cairo`, `gir1.2-gtk-3.0`, `network-manager`  
   On Ubuntu Desktop LTS, all packages except `chromium-browser` are pre-installed.  
   If all required packages are already installed (or pre-loaded on the machine), **no internet access is required** during installation.
@@ -95,6 +96,25 @@ The config app has three tabs:
 
 ---
 
+## On-Screen Keyboard
+
+On **Ubuntu 24.04 GNOME Shell**, the recommended on-screen keyboard is the
+**GNOME built-in Screen Keyboard**.  It works natively under Wayland and
+integrates cleanly with GNOME's touch gestures.
+
+### Enabling the GNOME Screen Keyboard
+
+1. Open **Settings → Accessibility**.
+2. Under **Typing**, toggle **Screen Keyboard** to **On**.
+3. The keyboard will appear automatically when a text field gains focus, or
+   you can swipe up from the bottom edge of the screen to show it manually.
+
+> **Note:** Onboard (a separate X11 on-screen keyboard) is no longer installed
+> by default and is not launched by the overlay.  If you need Onboard for an
+> older Xorg-based setup, install it manually: `sudo apt-get install onboard`.
+
+---
+
 ## Break Out of Kiosk Mode
 
 There are two ways to exit kiosk mode and return to the configuration app:
@@ -135,10 +155,17 @@ sudo /opt/kiosk/kiosk-diag.sh
 ```
 
 The script checks:
-- `/etc/gdm3/custom.conf` for `AutomaticLoginEnable=true`, `AutomaticLogin=kiosk`, and `WaylandEnable=false`
+- `/etc/gdm3/custom.conf` for `AutomaticLoginEnable=true` and `AutomaticLogin=kiosk`
 - That the kiosk OS user and home directory exist
 - That the GNOME autostart entry and first-run wizard suppression marker are in place
 - Recent GDM3 journal entries for session startup errors
+
+> **Wayland vs Xorg:** On Ubuntu 24.04 GNOME Shell, Wayland is the default and
+> is recommended for this kiosk (it provides the best GNOME on-screen keyboard
+> experience).  The diagnostic script no longer requires `WaylandEnable=false`.
+> If you previously forced Xorg by setting `WaylandEnable=false` in
+> `/etc/gdm3/custom.conf`, you can remove or revert that line to re-enable
+> Wayland.  Forcing Xorg is optional and may break GNOME OSK swipe gestures.
 
 If any check fails, re-run `sudo ./install.sh` from the repository directory.
 
