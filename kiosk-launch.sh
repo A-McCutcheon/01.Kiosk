@@ -61,10 +61,15 @@ fi
 # GTK implements the zwp_text_input_v3 protocol so the GNOME on-screen
 # keyboard appears above the browser window and auto-shows on input focus.
 #
+# MOZ_WEBRENDER=0 disables Firefox's GPU WebRender compositor, which can
+# cause screen artefacts and redraw glitches on some graphics drivers.
+# Hardware acceleration is also disabled via policies.json; this env-var
+# ensures it is off even if policies.json has not been (re-)applied yet.
+#
 # --kiosk        – full-screen, no browser UI, no exit via keyboard shortcuts.
 # -no-remote     – always start a fresh Firefox process; do not reuse any
 #                  existing instance that might not be in kiosk mode.
-"${BROWSER}" \
+MOZ_WEBRENDER=0 "${BROWSER}" \
     --kiosk \
     -no-remote \
     "${URL}" &
