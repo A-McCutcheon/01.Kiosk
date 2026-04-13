@@ -69,6 +69,24 @@ fi
 # --start-fullscreen        – ensures the window enters fullscreen.
 # --no-default-browser-check – suppresses the "make Chromium your default
 #                             browser?" bar that can break the kiosk layout.
+#
+# On Wayland, Chromium may default to running via XWayland (the X11
+# compatibility layer).  XWayland fullscreen windows bypass Wayland's
+# z-ordering, so the GNOME on-screen keyboard (a layer-shell OVERLAY surface
+# that is always above native Wayland windows) can disappear behind Chromium.
+# --ozone-platform=wayland forces Chromium to run as a native Wayland client
+# so the compositor correctly keeps the OSK above the fullscreen window.
+# --enable-features=WaylandTextInputV3 activates the zwp_text_input_v3
+# protocol, which GNOME Shell uses to detect when a text field is focused and
+# show the OSK automatically.
+PLATFORM_FLAGS=()
+if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+    PLATFORM_FLAGS+=(
+        --ozone-platform=wayland
+        --enable-features=WaylandTextInputV3
+    )
+fi
+
 "${BROWSER}" \
     --start-fullscreen \
     --no-first-run \
@@ -80,6 +98,7 @@ fi
     --disable-session-crashed-bubble \
     --noerrdialogs \
     --incognito \
+    "${PLATFORM_FLAGS[@]+"${PLATFORM_FLAGS[@]}"}" \
     --app="${URL}" &
 CHROMIUM_PID=$!
 
