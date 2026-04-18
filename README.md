@@ -4,6 +4,7 @@ A self-contained kiosk system for **Ubuntu Desktop LTS** that automatically
 logs in, opens a configured website in full-screen kiosk mode, and provides
 an operator configuration app for network settings and URL management.
 
+
 ---
 
 ## Features
