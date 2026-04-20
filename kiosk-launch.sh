@@ -127,6 +127,10 @@ FIREFOX_PID=$!
 (
     set +e  # every command here is best-effort; failures must not abort the main script
 
+    # Tuning knobs (kept near the top for easy adjustment).
+    _ACTIVATION_RETRIES=3   # how many times to re-send each activation method
+    _RETRY_DELAY=1          # seconds between retry attempts
+
     # ── Environment setup ─────────────────────────────────────────────────
     # DISPLAY: XWayland always binds to :0 on a standard GNOME session.
     _DISP="${DISPLAY:-:0}"
@@ -162,16 +166,36 @@ FIREFOX_PID=$!
         sleep 1
     done
 
+    # ── Wait for Firefox to render before activating ──────────────────────
+    # xdotool finds the XWayland window handle as soon as Firefox creates it,
+    # which can happen before Firefox has committed its first rendered frame to
+    # the Wayland surface.  Sending wmctrl activation at that point gives focus
+    # to a surface with no content, leaving the screen black.  A 2-second pause
+    # is sufficient for Firefox to complete its initial Wayland surface commit
+    # on typical hardware while still being short enough not to be noticeable.
+    if [[ -n "${_WIN_ID}" ]]; then
+        sleep 2
+    fi
+
     # ── Activate the window ───────────────────────────────────────────────
     # PRIMARY: wmctrl -i -a sends _NET_ACTIVE_WINDOW with source=2 (pager).
     # Mutter MUST honor source=2, bypassing focus-stealing prevention for
     # both X11 and Wayland-native (via XWayland-bridge) client windows.
+    # Retry up to 3 times (1 s apart) in case the first attempt races with
+    # Firefox's Wayland surface commit.
     if [[ -n "${_WIN_ID}" ]] && command -v wmctrl &>/dev/null; then
         # Validate _WIN_ID is a decimal integer before converting to hex.
         if [[ "${_WIN_ID}" =~ ^[0-9]+$ ]]; then
             _WIN_HEX="0x$(printf '%08x' "${_WIN_ID}")"
-            echo "kiosk-launch: activating Firefox window ${_WIN_HEX} via wmctrl (source=2)" >&2
-            DISPLAY="${_DISP}" wmctrl -i -a "${_WIN_HEX}" 2>/dev/null || true
+            for _try in $(seq 1 "${_ACTIVATION_RETRIES}"); do
+                echo "kiosk-launch: activating Firefox window ${_WIN_HEX} via wmctrl (source=2, attempt ${_try}/${_ACTIVATION_RETRIES})" >&2
+                DISPLAY="${_DISP}" wmctrl -i -a "${_WIN_HEX}" 2>/dev/null || true
+                # _NET_ACTIVE_WINDOW is updated by Mutter once focus is granted;
+                # if it already matches, skip the remaining retry sleeps.
+                _ACTIVE=$(DISPLAY="${_DISP}" xdotool getactivewindow 2>/dev/null || true)
+                [[ "${_ACTIVE}" == "${_WIN_ID}" ]] && break
+                sleep "${_RETRY_DELAY}"
+            done
             exit 0
         fi
     fi
@@ -179,8 +203,14 @@ FIREFOX_PID=$!
     # FALLBACK A: wmctrl by WM_CLASS name (when window-ID search failed).
     if command -v wmctrl &>/dev/null; then
         echo "kiosk-launch: window-ID search failed; activating by class name via wmctrl" >&2
-        DISPLAY="${_DISP}" wmctrl -xa Firefox   2>/dev/null || \
-        DISPLAY="${_DISP}" wmctrl -xa Navigator 2>/dev/null || true
+        for _try in $(seq 1 "${_ACTIVATION_RETRIES}"); do
+            DISPLAY="${_DISP}" wmctrl -xa Firefox   2>/dev/null || \
+            DISPLAY="${_DISP}" wmctrl -xa Navigator 2>/dev/null || true
+            # Check whether any Firefox/Navigator window is now the active one.
+            _ACTIVE_CLASS=$(DISPLAY="${_DISP}" xdotool getactivewindow getwindowclassname 2>/dev/null || true)
+            [[ "${_ACTIVE_CLASS}" == "Firefox" || "${_ACTIVE_CLASS}" == "Navigator" ]] && break
+            sleep "${_RETRY_DELAY}"
+        done
         exit 0
     fi
 
@@ -188,8 +218,13 @@ FIREFOX_PID=$!
     # Mutter's focus-stealing prevention, but try anyway as last resort).
     if [[ -n "${_WIN_ID}" ]]; then
         echo "kiosk-launch: wmctrl unavailable; trying xdotool windowactivate (source=0)" >&2
-        DISPLAY="${_DISP}" xdotool windowactivate --sync "${_WIN_ID}" 2>/dev/null || true
-        DISPLAY="${_DISP}" xdotool windowfocus    --sync "${_WIN_ID}" 2>/dev/null || true
+        for _try in $(seq 1 "${_ACTIVATION_RETRIES}"); do
+            DISPLAY="${_DISP}" xdotool windowactivate --sync "${_WIN_ID}" 2>/dev/null || true
+            DISPLAY="${_DISP}" xdotool windowfocus    --sync "${_WIN_ID}" 2>/dev/null || true
+            _ACTIVE=$(DISPLAY="${_DISP}" xdotool getactivewindow 2>/dev/null || true)
+            [[ "${_ACTIVE}" == "${_WIN_ID}" ]] && break
+            sleep "${_RETRY_DELAY}"
+        done
         exit 0
     fi
 
