@@ -100,43 +100,6 @@ def netmask_to_cidr(netmask):
 
 
 # ---------------------------------------------------------------------------
-# On-screen keyboard helper
-# ---------------------------------------------------------------------------
-
-def _onboard_geometry():
-    """Return geometry arguments to position onboard at the bottom of the screen.
-
-    Computes the screen dimensions from the primary monitor so that onboard
-    spans the full screen width and sits flush with the bottom edge.
-    Returns an empty list if the display cannot be queried (falls back to
-    onboard's own default placement).
-    """
-    try:
-        display = Gdk.Display.get_default()
-        if display is None:
-            return []
-        monitor = display.get_primary_monitor() or display.get_monitor(0)
-        if monitor is None:
-            return []
-        geo = monitor.get_geometry()
-        scale = monitor.get_scale_factor()
-        kbd_w = int(geo.width * scale)
-        x = geo.x
-        y = geo.y + int(geo.height * scale) - _ONBOARD_H
-        return ['-x', str(x), '-y', str(y), '-s', '{}x{}'.format(kbd_w, _ONBOARD_H)]
-    except Exception:
-        return []
-
-
-# Height (pixels) used when positioning the onboard on-screen keyboard.
-_ONBOARD_H = 200
-# Milliseconds to wait after launching onboard before re-raising this window,
-# allowing onboard enough time to complete its window mapping and claim focus
-# before we take it back.
-_FOCUS_RESTORE_MS = 500
-
-
-# ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
 
@@ -155,13 +118,11 @@ class KioskConfigApp(Gtk.Window):
         self.set_skip_pager_hint(True)
 
         self.config = load_config()
-        # Tracks which Gtk.Entry last received focus so the OSK can restore it.
-        self._last_focused_entry = None
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.add(root)
 
-        # Header row: title + keyboard toggle button
+        # Header row: title
         header_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         header_row.set_margin_bottom(6)
         root.pack_start(header_row, False, False, 0)
@@ -170,23 +131,12 @@ class KioskConfigApp(Gtk.Window):
         header.set_markup('<big><b>Kiosk Configuration</b></big>')
         header_row.pack_start(header, True, True, 0)
 
-        kbd_btn = Gtk.Button(label='⌨ Keyboard')
-        kbd_btn.set_tooltip_text('Toggle on-screen keyboard')
-        kbd_btn.connect('clicked', self._on_keyboard)
-        header_row.pack_end(kbd_btn, False, False, 0)
-
         # Notebook
         nb = Gtk.Notebook()
         root.pack_start(nb, True, True, 0)
         nb.append_page(self._build_website_tab(), Gtk.Label(label='Website'))
         nb.append_page(self._build_network_tab(), Gtk.Label(label='Network'))
         nb.append_page(self._build_wifi_tab(),    Gtk.Label(label='WiFi'))
-
-        # Connect focus tracking to every text entry so the OSK knows which
-        # field to restore focus to after onboard steals it on launch.
-        for entry in [self._url_entry, self._wifi_pwd, self._ap_ssid,
-                      self._ap_pwd, *self._net_entries.values()]:
-            entry.connect('focus-in-event', self._on_entry_focus)
 
         # Status bar
         self._status = Gtk.Label(label='')
@@ -207,43 +157,6 @@ class KioskConfigApp(Gtk.Window):
         self._status.set_markup(
             f'<span foreground="{colour}">{GLib.markup_escape_text(msg)}</span>'
         )
-
-    def _on_keyboard(self, _btn):
-        """Toggle the on-screen keyboard (onboard)."""
-        try:
-            result = subprocess.run(
-                ['pgrep', '-x', 'onboard'],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-            if result.returncode == 0:
-                subprocess.run(
-                    ['pkill', '-x', 'onboard'],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
-            else:
-                cmd = ['onboard']
-                cmd.extend(_onboard_geometry())
-                subprocess.Popen(cmd)
-                # After onboard finishes starting up (and stealing focus),
-                # restore focus to the last active text entry so that OSK
-                # keystrokes go to that field rather than the button.
-                GLib.timeout_add(_FOCUS_RESTORE_MS, self._restore_entry_focus)
-        except FileNotFoundError:
-            self._set_status('onboard is not installed', error=True)
-        except Exception as exc:
-            self._set_status(str(exc), error=True)
-
-    def _on_entry_focus(self, entry, _event):
-        """Record the most recently focused entry for OSK focus restoration."""
-        self._last_focused_entry = entry
-        return False  # do not consume the event
-
-    def _restore_entry_focus(self):
-        """Re-focus the last active entry so onboard keystrokes go there."""
-        target = self._last_focused_entry or self._url_entry
-        self.present()
-        target.grab_focus()
-        return False  # one-shot
 
     # ------------------------------------------------------------------
     # Website tab

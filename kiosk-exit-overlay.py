@@ -78,19 +78,9 @@ class ExitOverlay(Gtk.Window):
         btn.set_tooltip_text('Exit kiosk mode')
         btn.connect('clicked', self._on_exit)
 
-        btn_kbd = Gtk.Button(label='⌨ Keyboard')
-        btn_kbd.set_size_request(_BUTTON_W, _BUTTON_H)
-        btn_kbd.set_tooltip_text(
-            'Use the GNOME built-in Screen Keyboard:\n'
-            'swipe up from the bottom of the screen,\n'
-            'or enable via Settings → Accessibility → Typing → Screen Keyboard'
-        )
-        btn_kbd.connect('clicked', self._on_keyboard)
-
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=_SPACING)
         vbox.pack_start(btn_shutdown, False, False, 0)
         vbox.pack_start(btn, False, False, 0)
-        vbox.pack_start(btn_kbd, False, False, 0)
         self.add(vbox)
 
         # set_keep_above is applied after mapping so the WM sees it on the
@@ -223,31 +213,6 @@ class ExitOverlay(Gtk.Window):
                 pass
         subprocess.Popen(['sudo', 'systemctl', 'poweroff'])
         Gtk.main_quit()
-
-    def _on_keyboard(self, _btn):
-        """Display a help dialog for the GNOME built-in Screen Keyboard.
-
-        The GNOME Screen Keyboard is the recommended on-screen keyboard on
-        Ubuntu 24.04 GNOME Shell under Wayland.  Enable it via:
-          Settings → Accessibility → Typing → Screen Keyboard
-        Then swipe up from the bottom of the screen to show it.
-        With Firefox as the kiosk browser the keyboard also appears
-        automatically when a text field receives focus.
-        """
-        dialog = Gtk.MessageDialog(
-            transient_for=self,
-            flags=0,
-            message_type=Gtk.MessageType.INFO,
-            buttons=Gtk.ButtonsType.OK,
-            text='GNOME Screen Keyboard',
-        )
-        dialog.format_secondary_text(
-            'Swipe up from the bottom of the screen to show the keyboard.\n\n'
-            'If it does not appear, enable it first:\n'
-            'Settings → Accessibility → Typing → Screen Keyboard → On'
-        )
-        dialog.run()
-        dialog.destroy()
 
     def _on_exit(self, _btn):
         self.hide()
