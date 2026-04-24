@@ -108,7 +108,7 @@ sleep 5
 MOZ_WEBRENDER=0 "${BROWSER}" \
     --kiosk \
     -no-remote \
-    "${URL}" &
+    "${URL}" 9>&- &
 FIREFOX_PID=$!
 
 # ── Post-launch: wait for Firefox window and activate it ─────────────────
@@ -248,7 +248,7 @@ FIREFOX_PID=$!
     fi
 
     echo "kiosk-launch: all activation methods exhausted" >&2
-) &
+) 9>&- &
 
 # ── Wait for Firefox process to start, then launch the overlay ───────────
 # The overlay itself polls (via xdotool) until Firefox's window is on
@@ -260,7 +260,7 @@ done
 
 OVERLAY_PID=""
 if [[ -f "${EXIT_OVERLAY}" ]]; then
-    python3 "${EXIT_OVERLAY}" "${FIREFOX_PID}" &
+    python3 "${EXIT_OVERLAY}" "${FIREFOX_PID}" 9>&- &
     OVERLAY_PID=$!
 fi
 

@@ -116,6 +116,14 @@ class ExitOverlay(Gtk.Window):
 
     def _keep_on_top(self):
         """Periodically raise the overlay above Firefox's kiosk window."""
+        # Exit the overlay automatically once the browser process is gone so
+        # the button doesn't linger over the config app after Firefox exits.
+        if self._browser_pid is not None:
+            try:
+                os.kill(self._browser_pid, 0)
+            except ProcessLookupError:
+                Gtk.main_quit()
+                return False
         if self.get_visible():
             self.set_keep_above(True)
             gdk_win = self.get_window()
