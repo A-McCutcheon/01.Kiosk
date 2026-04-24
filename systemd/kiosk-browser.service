@@ -14,6 +14,13 @@ Type=simple
 ExecStart=/opt/kiosk/kiosk-launch.sh
 Restart=on-failure
 RestartSec=10s
+# Keep the service unit active even after kiosk-launch.sh exits normally
+# (e.g. after it opens the config app and waits for it to close).
+# Without this, systemd's default KillMode=control-group sends SIGTERM to
+# all remaining cgroup members — including any new kiosk-launch.sh process
+# spawned by the config app — the moment the original service process exits,
+# which silently kills the re-launch before Firefox ever appears.
+RemainAfterExit=yes
 
 [Install]
 WantedBy=graphical-session.target
