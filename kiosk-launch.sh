@@ -86,10 +86,29 @@ fi
 # immediately and silently if error output is suppressed — making the wait
 # a no-op.  The extra sleep gives Mutter time to finish its startup animation
 # before Firefox claims the fullscreen surface.
+#
+# On subsequent launches (e.g. after the user clicks "Launch Kiosk" from the
+# config app) GNOME Shell is already fully running, so gdbus wait returns
+# immediately and no extra sleep is needed.  The sleep is only necessary on
+# the very first boot when Mutter is still completing its startup sequence.
+_compositor_was_ready=false
 if command -v gdbus &>/dev/null; then
-    gdbus wait --session --timeout 30 org.gnome.Shell 2>/dev/null || true
+    # A short-timeout probe: if GNOME Shell is already present the call
+    # returns 0 almost immediately; if not it will time out after 2 seconds
+    # and we fall through to the full 30-second wait.
+    if gdbus wait --session --timeout 2 org.gnome.Shell 2>/dev/null; then
+        _compositor_was_ready=true
+    else
+        gdbus wait --session --timeout 30 org.gnome.Shell 2>/dev/null || true
+    fi
 fi
-sleep 5
+# Only add the post-startup sleep when the compositor was still initialising
+# (first-boot path).  On subsequent launches GNOME Shell is already fully
+# running so the extra wait is unnecessary and causes an apparent 5-second
+# freeze after "Launch Kiosk" is clicked.
+if ! "${_compositor_was_ready}"; then
+    sleep 5
+fi
 
 # ── Launch Firefox in background ───────────────────────────────────────────
 # Firefox is a native GTK/Wayland app: it runs as a native Wayland client
