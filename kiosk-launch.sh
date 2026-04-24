@@ -49,6 +49,9 @@ fi
 
 # ── If no URL is configured, open the config app and exit ─────────────────
 if [[ -z "${URL}" ]]; then
+    # Release the single-instance lock before opening the config app so that
+    # the new kiosk-launch.sh spawned by "Launch Kiosk" can acquire it.
+    exec 9>&-
     python3 "${CONFIG_APP}"
     exit 0
 fi
@@ -65,6 +68,7 @@ done
 if [[ -z "${BROWSER}" ]]; then
     echo "ERROR: Firefox is not installed." >&2
     echo "Run sudo apt-get install -y firefox" >&2
+    exec 9>&-
     python3 "${CONFIG_APP}"
     exit 1
 fi
@@ -269,4 +273,7 @@ trap '_cleanup_overlay' EXIT
 wait "${FIREFOX_PID}" || true
 
 # ── When the browser exits, reopen the config app ─────────────────────────
+# Release the single-instance lock first so the new kiosk-launch.sh that
+# "Launch Kiosk" spawns from the config app is able to acquire it.
+exec 9>&-
 python3 "${CONFIG_APP}"
