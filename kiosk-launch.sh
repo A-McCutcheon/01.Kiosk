@@ -161,8 +161,10 @@ FIREFOX_PID=$!
     set +e  # every command here is best-effort; failures must not abort the main script
 
     # Tuning knobs (kept near the top for easy adjustment).
-    _ACTIVATION_RETRIES=3   # how many times to re-send each activation method
-    _RETRY_DELAY=1          # seconds between retry attempts
+    _ACTIVATION_RETRIES=3       # how many times to re-send each activation method
+    _RETRY_DELAY=1              # seconds between retry attempts
+    _WAYLAND_SURFACE_DELAY=5    # seconds to wait for Firefox's Wayland surface to
+                                # register with GNOME Shell before activating
     _SESSION_TYPE="${XDG_SESSION_TYPE:-}"
     _SESSION_TYPE_LC="$(printf '%s' "${_SESSION_TYPE}" | tr '[:upper:]' '[:lower:]')"
     _IS_WAYLAND=false
@@ -215,13 +217,13 @@ FIREFOX_PID=$!
         # On Wayland we only polled for an X11 window for 3 s; Firefox's Wayland
         # surface may not be registered with GNOME Shell yet.  Wait before
         # attempting activation so we don't activate a not-yet-mapped window.
-        sleep 5
+        sleep "${_WAYLAND_SURFACE_DELAY}"
         # GNOME Shell Eval (works on GNOME < 41; silently rejected on GNOME 41+
         # without unsafe-mode – safe to attempt regardless).
         if command -v gdbus &>/dev/null; then
-            _JS="let w=global.get_window_actors()"
+            _JS="let _win=global.get_window_actors()"
             _JS+=".find(a=>a.meta_window.get_wm_class()?.toLowerCase().includes('firefox'));"
-            _JS+="if(w)w.meta_window.activate(global.display.get_current_time())"
+            _JS+="if(_win)_win.meta_window.activate(global.display.get_current_time())"
             if ! gdbus call --session \
                 --dest org.gnome.Shell \
                 --object-path /org/gnome/Shell \
