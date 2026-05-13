@@ -126,31 +126,43 @@ _FF_PROFILE_DIR="${HOME}/.config/kiosk/firefox-profile"
 # "Firefox is already running, but is not responding" dialog instead of
 # starting.  Kill any surviving Firefox instances now so the new launch
 # always starts from a clean slate.
+#
+# Use pgrep -f to search the FULL command line rather than only the process
+# name (comm).  On Ubuntu, snap Firefox runs via a launcher script whose
+# comm may be 'bash' or 'firefox.launcher', not 'firefox'; pgrep -x would
+# miss those processes.  The pattern '/firefox' matches any process whose
+# argv[0] or arguments contain a path component '/firefox', which covers:
+#   /usr/lib/firefox/firefox        (apt Firefox)
+#   /snap/bin/firefox               (snap launcher)
+#   /snap/firefox/.../firefox       (snap browser binary)
+# Our own kiosk-launch.sh command line does not contain '/firefox', so the
+# self-exclusion by $$ is just a belt-and-suspenders safety measure.
 _ff_pids_raw=""
-for _ff_bin in firefox firefox-esr; do
-    _ff_pids_raw+="$(pgrep -x "${_ff_bin}" 2>/dev/null || true)"$'\n'
-done
-for _ff_pid in ${_ff_pids_raw}; do
-    [[ -n "${_ff_pid}" ]] || continue
+_ff_pids_raw+="$(pgrep -f '/firefox' 2>/dev/null | grep -v "^${$}\$" || true)"$'\n'
+_ff_pids_raw+="$(pgrep -f '/firefox-esr' 2>/dev/null | grep -v "^${$}\$" || true)"$'\n'
+# Also include exact-name matches in case the above misses any variant.
+_ff_pids_raw+="$(pgrep -x 'firefox'     2>/dev/null || true)"$'\n'
+_ff_pids_raw+="$(pgrep -x 'firefox-esr' 2>/dev/null || true)"$'\n'
+# Deduplicate and drop blank entries.
+_ff_pids_uniq="$(printf '%s\n' ${_ff_pids_raw} | sort -un | grep -v '^$' || true)"
+for _ff_pid in ${_ff_pids_uniq}; do
     echo "kiosk-launch: killing lingering Firefox process (PID ${_ff_pid})" >&2
     kill "${_ff_pid}" 2>/dev/null || true
 done
 # Wait up to 10 s for each killed process to actually exit (checking every
 # 0.5 s) before removing the lock files.  A fixed sleep is not sufficient
 # because snap Firefox can take several seconds to clean up its sandbox.
-if [[ -n "${_ff_pids_raw//[$'\n ']/}" ]]; then
+if [[ -n "${_ff_pids_uniq}" ]]; then
     for _i in $(seq 1 20); do
         _ff_any_alive=false
-        for _ff_pid in ${_ff_pids_raw}; do
-            [[ -n "${_ff_pid}" ]] || continue
+        for _ff_pid in ${_ff_pids_uniq}; do
             kill -0 "${_ff_pid}" 2>/dev/null && { _ff_any_alive=true; break; }
         done
         "${_ff_any_alive}" || break
         sleep 0.5
     done
     # Force-kill any process that did not exit within the grace period.
-    for _ff_pid in ${_ff_pids_raw}; do
-        [[ -n "${_ff_pid}" ]] || continue
+    for _ff_pid in ${_ff_pids_uniq}; do
         if kill -0 "${_ff_pid}" 2>/dev/null; then
             echo "kiosk-launch: force-killing non-responsive Firefox (PID ${_ff_pid})" >&2
             kill -9 "${_ff_pid}" 2>/dev/null || true
@@ -159,30 +171,55 @@ if [[ -n "${_ff_pids_raw//[$'\n ']/}" ]]; then
     sleep 0.5  # allow the OS to release file locks after SIGKILL
 fi
 
-# ── Remove stale Firefox profile lock files ────────────────────────────────
-# Firefox writes a 'lock' symlink and a '.parentlock' file when it starts;
-# an unclean shutdown (crash, power loss, SIGKILL) leaves both files behind
-# and the next launch shows "Firefox is already running, but is not
-# responding" instead of the kiosk page.
+# ── Recreate the kiosk Firefox profile from scratch ─────────────────────
+# The most reliable way to prevent "Firefox is already running" is to
+# ensure our custom profile directory contains no stale lock files at all.
+# We do this by removing the profile and recreating it fresh on every
+# launch.  This eliminates two edge cases that survive simple rm -f:
 #
-# Clean all known profile locations unconditionally — not just our custom
-# profile.  On Ubuntu the snap Firefox may keep its default profile under
-# ~/snap/firefox/common/.mozilla/firefox/ and can show the dialog from that
-# profile's stale lock even when a custom -profile path is specified.
-mkdir -p "${_FF_PROFILE_DIR}" 2>/dev/null || true
-rm -f "${_FF_PROFILE_DIR}/lock" "${_FF_PROFILE_DIR}/.parentlock"
-# shellcheck disable=SC2231
-for _ff_lock_dir in \
-        "${HOME}/.mozilla/firefox/"* \
-        "${HOME}/snap/firefox/common/.mozilla/firefox/"*; do
-    [[ -d "${_ff_lock_dir}" ]] || continue
-    rm -f "${_ff_lock_dir}/lock" "${_ff_lock_dir}/.parentlock"
+#   1. PID reuse after reboot: Firefox's 'lock' symlink records the PID of
+#      the previous browser process.  After a reboot the OS may assign that
+#      same PID to an unrelated process (e.g. a system daemon).  Firefox
+#      sees "PID is alive" and falsely reports another instance is running —
+#      even though the old Firefox is long gone and the lock was never
+#      cleaned from a previous crash.
+#
+#   2. Partial cleanup: if a previous kiosk-launch.sh was interrupted after
+#      Firefox started but before the profile was written, stale SQLite WAL
+#      files or other session artifacts can trigger Firefox's recovery UI
+#      instead of loading the kiosk URL cleanly.
+#
+# For a kiosk the profile is intentionally stateless: user.js is rewritten
+# on every launch and the kiosk URL is always the same, so losing the
+# cached startup files costs only a short one-time Firefox init delay
+# (< 1 s in practice) and is far preferable to showing an error dialog.
+if [[ -d "${_FF_PROFILE_DIR}" ]]; then
+    rm -rf "${_FF_PROFILE_DIR}"
+fi
+mkdir -p "${_FF_PROFILE_DIR}"
+
+# ── Remove stale locks from all other Firefox profile locations ──────────
+# Even though we always launch with -profile pointing at our custom dir,
+# snap Firefox may ignore that path (snap confinement / home-interface not
+# connected) and fall back to its own profile in ~/snap/firefox/common/.
+# Clean all reachable Firefox profile roots so the fallback path is also
+# lock-free.  Use find so the sweep handles arbitrary subdirectory nesting
+# without needing an explicit glob.
+for _ff_root in \
+        "${HOME}/.mozilla/firefox" \
+        "${HOME}/snap/firefox/common/.mozilla/firefox" \
+        "${HOME}/.var/app/org.mozilla.firefox/.mozilla/firefox"; do
+    [[ -d "${_ff_root}" ]] || continue
+    while IFS= read -r -d '' _ff_lock; do
+        echo "kiosk-launch: removing stale Firefox lock: ${_ff_lock}" >&2
+        rm -f "${_ff_lock}"
+    done < <(find "${_ff_root}" -maxdepth 3 \
+                  \( -name 'lock' -o -name '.parentlock' \) -print0 2>/dev/null)
 done
 
 # ── Write renderer preferences into the kiosk profile ────────────────────
 # Rewrite user.js on every launch so renderer settings are always current.
-if [[ -w "${_FF_PROFILE_DIR}" ]]; then
-    cat > "${_FF_PROFILE_DIR}/user.js" <<'EOF'
+cat > "${_FF_PROFILE_DIR}/user.js" <<'EOF'
 /* kiosk-managed — rewritten by kiosk-launch.sh before every launch */
 /* Force software (CPU) WebRender to prevent black screens on Wayland kiosk.
    gfx.webrender.software uses Firefox's own swgl (software WebGL) backend
@@ -192,9 +229,6 @@ user_pref("gfx.webrender.software.opengl", false);
 /* Suppress crash-restore prompt for clean kiosk startup */
 user_pref("browser.sessionstore.resume_from_crash", false);
 EOF
-else
-    echo "kiosk-launch: WARNING: cannot write to ${_FF_PROFILE_DIR}; WebRender user.js not applied" >&2
-fi
 
 # ── Launch Firefox in background ───────────────────────────────────────────
 # Run Firefox natively in the current session (Wayland on GNOME by default).
