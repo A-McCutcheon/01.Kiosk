@@ -5,11 +5,10 @@
 # Reads the configured URL and opens Firefox in kiosk mode.
 # When the browser exits the configuration app is re-opened automatically.
 #
-# Firefox is used because it is a native GTK/Wayland application.  On a GNOME
-# Wayland session GTK implements the zwp_text_input_v3 protocol automatically,
-# so the GNOME on-screen keyboard appears above the browser window and
-# auto-shows whenever a web-page input field receives focus — with no special
-# flags required.
+# Firefox is used because it integrates with GNOME's on-screen keyboard flow.
+# We explicitly force Firefox onto XWayland (MOZ_ENABLE_WAYLAND=0) so the
+# xdotool/wmctrl-based window detection and activation path can reliably find
+# and focus the browser window on GNOME Wayland systems.
 
 set -euo pipefail
 
@@ -111,10 +110,8 @@ if ! "${_compositor_was_ready}"; then
 fi
 
 # ── Launch Firefox in background ───────────────────────────────────────────
-# Firefox is a native GTK/Wayland app: it runs as a native Wayland client
-# automatically when WAYLAND_DISPLAY is set, with no extra flags required.
-# GTK implements the zwp_text_input_v3 protocol so the GNOME on-screen
-# keyboard appears above the browser window and auto-shows on input focus.
+# Force Firefox to use XWayland so xdotool/wmctrl can detect and activate the
+# browser window reliably on GNOME Wayland sessions.
 #
 # MOZ_WEBRENDER=0 disables Firefox's GPU WebRender compositor, which can
 # cause screen artefacts and redraw glitches on some graphics drivers.
@@ -124,7 +121,7 @@ fi
 # --kiosk        – full-screen, no browser UI, no exit via keyboard shortcuts.
 # -no-remote     – always start a fresh Firefox process; do not reuse any
 #                  existing instance that might not be in kiosk mode.
-MOZ_WEBRENDER=0 "${BROWSER}" \
+MOZ_ENABLE_WAYLAND=0 MOZ_WEBRENDER=0 "${BROWSER}" \
     --kiosk \
     -no-remote \
     "${URL}" 9>&- &
