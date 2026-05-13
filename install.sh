@@ -197,17 +197,7 @@ cat > "${FIREFOX_POLICY_DIR}/policies.json" <<'EOF'
     "DontCheckDefaultBrowser": true,
     "NoDefaultBookmarks": true,
     "DisplayBookmarksToolbar": "never",
-    "DisplayMenuBar": "default-off",
-    "Preferences": {
-      "gfx.webrender.all": {
-        "Value": false,
-        "Status": "locked"
-      },
-      "layers.acceleration.disabled": {
-        "Value": true,
-        "Status": "locked"
-      }
-    }
+    "DisplayMenuBar": "default-off"
   }
 }
 EOF

@@ -112,18 +112,26 @@ fi
 # ── Launch Firefox in background ───────────────────────────────────────────
 # Run Firefox natively in the current session (Wayland on GNOME by default).
 #
-# MOZ_WEBRENDER=0 disables Firefox's GPU WebRender compositor, which can
-# cause screen artefacts and redraw glitches on some graphics drivers.
-# Hardware acceleration is also disabled via policies.json; this env-var
-# ensures it is off even if policies.json has not been (re-)applied yet.
+# On native Wayland, WebRender is Firefox's primary rendering backend; it
+# must NOT be disabled or Firefox opens a permanently black, unrendered
+# surface.  On X11/XWayland, MOZ_WEBRENDER=0 prevents GPU rendering artefacts
+# seen on some drivers.  Set the flag only when the session is not Wayland.
 #
 # --kiosk        – full-screen, no browser UI, no exit via keyboard shortcuts.
 # -no-remote     – always start a fresh Firefox process; do not reuse any
 #                  existing instance that might not be in kiosk mode.
-MOZ_WEBRENDER=0 "${BROWSER}" \
-    --kiosk \
-    -no-remote \
-    "${URL}" 9>&- &
+_LAUNCH_SESSION_LC="$(printf '%s' "${XDG_SESSION_TYPE:-}" | tr '[:upper:]' '[:lower:]')"
+if [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
+    "${BROWSER}" \
+        --kiosk \
+        -no-remote \
+        "${URL}" 9>&- &
+else
+    MOZ_WEBRENDER=0 "${BROWSER}" \
+        --kiosk \
+        -no-remote \
+        "${URL}" 9>&- &
+fi
 FIREFOX_PID=$!
 
 # ── Post-launch: wait for Firefox window and activate it ─────────────────
