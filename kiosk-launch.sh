@@ -150,6 +150,9 @@ FIREFOX_PID=$!
     _ACTIVATION_RETRIES=3   # how many times to re-send each activation method
     _RETRY_DELAY=1          # seconds between retry attempts
     _SESSION_TYPE="${XDG_SESSION_TYPE:-}"
+    _SESSION_TYPE_LC="$(printf '%s' "${_SESSION_TYPE}" | tr '[:upper:]' '[:lower:]')"
+    _IS_WAYLAND=false
+    [[ "${_SESSION_TYPE_LC}" == "wayland" ]] && _IS_WAYLAND=true
 
     # ── Environment setup ─────────────────────────────────────────────────
     # DISPLAY: XWayland always binds to :0 on a standard GNOME session.
@@ -176,7 +179,7 @@ FIREFOX_PID=$!
     # On native Wayland Firefox may not expose an X11 window to xdotool at all.
     # Keep this check best-effort and short on Wayland sessions.
     _WINDOW_SEARCH_RETRIES=30
-    if [[ "${_SESSION_TYPE,,}" == "wayland" ]]; then
+    if "${_IS_WAYLAND}"; then
         _WINDOW_SEARCH_RETRIES=3
     fi
     # Poll up to _WINDOW_SEARCH_RETRIES seconds (1s intervals).  Firefox's
@@ -193,7 +196,7 @@ FIREFOX_PID=$!
         sleep 1
     done
 
-    if [[ -z "${_WIN_ID}" && "${_SESSION_TYPE,,}" == "wayland" ]]; then
+    if [[ -z "${_WIN_ID}" ]] && "${_IS_WAYLAND}"; then
         echo "kiosk-launch: no X11 Firefox window detected on Wayland; skipping X11 activation fallbacks" >&2
         if command -v gdbus &>/dev/null; then
             _JS="global.get_window_actors()"
