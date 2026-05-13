@@ -199,12 +199,16 @@ FIREFOX_PID=$!
             _JS="global.get_window_actors()"
             _JS+=".find(a=>a.meta_window.get_wm_class()?.toLowerCase().includes('firefox'))"
             _JS+="?.meta_window.activate(global.display.get_current_time())"
-            gdbus call --session \
+            if ! gdbus call --session \
                 --dest org.gnome.Shell \
                 --object-path /org/gnome/Shell \
                 --method org.gnome.Shell.Eval \
                 "${_JS}" \
-                2>/dev/null || true
+                2>/dev/null; then
+                echo "kiosk-launch: GNOME Shell Eval activation unavailable on this session" >&2
+            fi
+        else
+            echo "kiosk-launch: gdbus not found; no Wayland-native activation helper available" >&2
         fi
         exit 0
     fi
