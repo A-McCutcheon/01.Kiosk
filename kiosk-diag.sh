@@ -90,6 +90,17 @@ for f in kiosk-launch.sh kiosk-break.sh kiosk-exit-overlay.py kiosk-config/confi
 done
 echo ""
 
+# ── Required runtime tools ────────────────────────────────────────────────
+echo "── Required runtime tools ────────────────────────────────────────────"
+for tool in xdotool wmctrl gdbus; do
+    if command -v "${tool}" &>/dev/null; then
+        _ok  "${tool} found ($(command -v "${tool}"))"
+    else
+        _fail "${tool} not found -- window activation may fail, causing a black browser screen"
+    fi
+done
+echo ""
+
 # ── GDM3 journal ──────────────────────────────────────────────────────────
 echo "── GDM3 recent journal (last 30 lines) ───────────────────────────────"
 if command -v journalctl &>/dev/null; then
@@ -97,6 +108,23 @@ if command -v journalctl &>/dev/null; then
         || echo "  (Could not read GDM3 journal – try running as root)"
 else
     echo "  journalctl not available"
+fi
+echo ""
+
+# ── Kiosk browser service journal ─────────────────────────────────────────
+# Run as the kiosk user so journalctl can access the user service journal.
+# When collected via SSH, su -c lets a root/admin user retrieve these logs.
+echo "── Kiosk browser service journal (last 50 lines) ────────────────────"
+if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
+    KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
+    if [[ -n "${KIOSK_UID}" ]]; then
+        journalctl --since "1 hour ago" --no-pager \
+            _UID="${KIOSK_UID}" _SYSTEMD_USER_UNIT="kiosk-browser.service" \
+            2>/dev/null | tail -50 | sed 's/^/  /' \
+            || echo "  (Could not read kiosk-browser journal -- run as root or as '${KIOSK_USER}')"
+    fi
+else
+    echo "  journalctl not available or kiosk user not found"
 fi
 echo ""
 

@@ -189,15 +189,34 @@ FIREFOX_PID=$!
         sleep 1
     done
 
-    # ── Wait for Firefox to render before activating ──────────────────────
-    # xdotool finds the XWayland window handle as soon as Firefox creates it,
-    # which can happen before Firefox has committed its first rendered frame to
-    # the Wayland surface.  Sending wmctrl activation at that point gives focus
-    # to a surface with no content, leaving the screen black.  A 2-second pause
-    # is sufficient for Firefox to complete its initial Wayland surface commit
-    # on typical hardware while still being short enough not to be noticeable.
+    # ── Wait for Firefox to paint its first frame ─────────────────────────
+    # xdotool finds the XWayland window handle as soon as Firefox maps it
+    # (i.e. creates the surface), which can happen before any pixel content
+    # has been committed to the compositor.  Activating at that point hands
+    # focus to an unpainted surface that stays solid black.
+    #
+    # Poll xdotool with --onlyvisible to detect the moment the compositor
+    # has received Firefox's first rendered frame.  Allow up to 10 seconds
+    # (20 × 0.5 s); on success add a short 1-second settle delay.  If the
+    # visible-window check times out (window is mapped but no content yet),
+    # fall back to a longer 5-second sleep so we never activate a surface
+    # that has not rendered.
     if [[ -n "${_WIN_ID}" ]]; then
-        sleep 2
+        _PAINTED=""
+        for _i in $(seq 1 20); do
+            for _vpat in "--classname Navigator" "--class Firefox" "--classname firefox"; do
+                # shellcheck disable=SC2086
+                _PAINTED=$(DISPLAY="${_DISP}" xdotool search --onlyvisible ${_vpat} 2>/dev/null | head -1)
+                [[ -n "${_PAINTED}" ]] && break 2
+            done
+            sleep 0.5
+        done
+        if [[ -n "${_PAINTED}" ]]; then
+            _WIN_ID="${_PAINTED}"   # prefer the confirmed-visible ID
+            sleep 1                 # short settle after first paint
+        else
+            sleep 5                 # window mapped but not yet painted; wait longer
+        fi
     fi
 
     # ── Activate the window ───────────────────────────────────────────────
@@ -206,6 +225,12 @@ FIREFOX_PID=$!
     # both X11 and Wayland-native (via XWayland-bridge) client windows.
     # Retry up to 3 times (1 s apart) in case the first attempt races with
     # Firefox's Wayland surface commit.
+    #
+    # After wmctrl we also run xdotool windowfocus and GNOME Shell Eval as
+    # belt-and-suspenders: on GNOME versions where source=2 is not reliably
+    # forwarded to Wayland-native clients, one of the additional methods will
+    # succeed.  GNOME Shell Eval is silently rejected on GNOME 41+ (where the
+    # Shell.Eval method requires unsafe-mode), so it is harmless to attempt.
     if [[ -n "${_WIN_ID}" ]] && command -v wmctrl &>/dev/null; then
         # Validate _WIN_ID is a decimal integer before converting to hex.
         if [[ "${_WIN_ID}" =~ ^[0-9]+$ ]]; then
@@ -219,6 +244,24 @@ FIREFOX_PID=$!
                 [[ "${_ACTIVE}" == "${_WIN_ID}" ]] && break
                 sleep "${_RETRY_DELAY}"
             done
+            # Belt-and-suspenders: xdotool windowfocus (sets X11 input focus
+            # directly; complements wmctrl's EWMH approach).
+            DISPLAY="${_DISP}" xdotool windowfocus --sync "${_WIN_ID}" 2>/dev/null || true
+            # GNOME Shell JavaScript eval (most reliable on GNOME < 41; silently
+            # rejected on GNOME 41+ without unsafe-mode – safe to attempt).
+            # Finds the Firefox MetaWindow and calls activate() on it directly,
+            # bypassing focus-stealing prevention entirely.
+            if command -v gdbus &>/dev/null; then
+                _JS="let w=global.get_window_actors()"
+                _JS+=".find(a=>a.meta_window.get_wm_class()?.toLowerCase().includes('firefox'));"
+                _JS+="if(w)w.meta_window.activate(global.display.get_current_time())"
+                gdbus call --session \
+                    --dest org.gnome.Shell \
+                    --object-path /org/gnome/Shell \
+                    --method org.gnome.Shell.Eval \
+                    "${_JS}" \
+                    2>/dev/null || true
+            fi
             exit 0
         fi
     fi
