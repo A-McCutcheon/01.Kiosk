@@ -140,8 +140,11 @@ elif ! grep -q 'MOZ_ENABLE_WAYLAND=1' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q 'firefox-profile' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing dedicated kiosk profile for WebRender user.js)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'killing lingering Firefox' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing kill-lingering-Firefox fix)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (Wayland-native launch, kiosk profile)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (Wayland-native launch, kiosk profile, lock cleanup)"
 fi
 echo ""
 

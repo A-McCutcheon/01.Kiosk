@@ -117,6 +117,29 @@ fi
 # interface), and Firefox's enterprise Preferences policy only applies to an
 # internal allowlist that excludes some gfx.* preferences.
 _FF_PROFILE_DIR="${HOME}/.config/kiosk/firefox-profile"
+
+# ── Kill any lingering Firefox process before launching ───────────────────
+# If Firefox was running when the machine was rebooted or the script was
+# killed, the old process may still be alive and holding the profile lock.
+# Removing the lock file alone is not enough in that case — Firefox checks
+# whether the PID in the lock is alive, and if it is, it shows the
+# "Firefox is already running, but is not responding" dialog instead of
+# starting.  Kill any surviving Firefox instances now so the new launch
+# always starts from a clean slate.
+_ff_pids_raw=""
+for _ff_bin in firefox firefox-esr; do
+    _ff_pids_raw+="$(pgrep -x "${_ff_bin}" 2>/dev/null || true)"$'\n'
+done
+for _ff_pid in ${_ff_pids_raw}; do
+    [[ -n "${_ff_pid}" ]] || continue
+    echo "kiosk-launch: killing lingering Firefox process (PID ${_ff_pid})" >&2
+    kill "${_ff_pid}" 2>/dev/null || true
+done
+# Give processes up to 3 seconds to exit cleanly before we remove the lock.
+if [[ -n "${_ff_pids_raw//[$'\n ']/}" ]]; then
+    sleep 3
+fi
+
 if mkdir -p "${_FF_PROFILE_DIR}" && [[ -w "${_FF_PROFILE_DIR}" ]]; then
     # Remove any stale Firefox profile lock files left by a previous crash or
     # unclean shutdown.  Firefox writes a 'lock' symlink and a '.parentlock'
