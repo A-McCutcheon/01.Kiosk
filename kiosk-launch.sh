@@ -275,30 +275,55 @@ EOF
 # ── Launch Firefox in background ───────────────────────────────────────────
 # Run Firefox natively in the current session (Wayland on GNOME by default).
 #
-# On native Wayland, WebRender is Firefox's primary rendering backend; it
-# must NOT be disabled or Firefox opens a permanently black, unrendered
-# surface.  On X11/XWayland, MOZ_WEBRENDER=0 prevents GPU rendering artefacts
-# seen on some drivers.  Set the flag only when the session is not Wayland.
+# Rendering back-end selection:
 #
-# MOZ_ENABLE_WAYLAND=1 explicitly requests the Wayland backend in Firefox.
-# Without it, Firefox may auto-detect Wayland from WAYLAND_DISPLAY, but
-# setting it explicitly ensures the correct backend is used even in
-# environments (e.g. systemd user services) where auto-detection is less
-# reliable.
+# snap Firefox on Wayland (Ubuntu 22.04+ / 24.04+)
+#   Snap Firefox running as a native Wayland client cannot be reliably
+#   activated by xdotool or wmctrl because those tools communicate via
+#   XWayland / EWMH, which only knows about X11 windows.  A native Wayland
+#   window also requires an XDG activation token for GNOME Shell (≥ 44/46) to
+#   grant fullscreen focus; without one the --kiosk surface is mapped but
+#   never receives an expose/focus event from Mutter, leaving the screen
+#   permanently black.
 #
-# -profile       – use the dedicated kiosk profile so user.js settings above
-#                  are applied on every launch.
-# --kiosk        – full-screen, no browser UI, no exit via keyboard shortcuts.
-# -no-remote     – always start a fresh Firefox process; do not reuse any
-#                  existing instance that might not be in kiosk mode.
+#   Fix: force snap Firefox onto XWayland with GDK_BACKEND=x11 +
+#   MOZ_ENABLE_WAYLAND=0.  XWayland windows are visible to xdotool/wmctrl and
+#   don't require an activation token for focus.  MOZ_WEBRENDER=0 disables
+#   GPU WebRender (hardware WebRender on XWayland/Mesa can produce artefacts
+#   or a black surface on VMs and systems with limited driver support).
+#
+# apt/non-snap Firefox on a Wayland session
+#   MOZ_ENABLE_WAYLAND=1 requests the native Wayland back-end.  Without this,
+#   apt Firefox may auto-detect Wayland unreliably from $WAYLAND_DISPLAY in
+#   a systemd user-service environment.
+#
+# X11/XWayland session (non-Wayland)
+#   MOZ_WEBRENDER=0 prevents GPU WebRender artefacts seen on some X11 drivers.
+#
+# Common flags:
+#   -profile  – dedicated kiosk profile; user.js settings are applied every
+#               launch so renderer preferences survive profile wipes.
+#   --kiosk   – full-screen, no browser UI, no keyboard-shortcut exit.
+#   -no-remote – always start a fresh process; never reuse an existing
+#               instance that might not be in kiosk mode.
 _LAUNCH_SESSION_LC="$(printf '%s' "${XDG_SESSION_TYPE:-}" | tr '[:upper:]' '[:lower:]')"
-if [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
+if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
+    # snap Firefox on Wayland → force XWayland so xdotool/wmctrl can manage
+    # the window and --kiosk focus is granted without an activation token.
+    GDK_BACKEND=x11 MOZ_ENABLE_WAYLAND=0 MOZ_WEBRENDER=0 "${BROWSER}" \
+        --kiosk \
+        -no-remote \
+        -profile "${_FF_PROFILE_DIR}" \
+        "${URL}" 9>&- &
+elif [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
+    # apt (non-snap) Firefox on a Wayland session → native Wayland back-end.
     MOZ_ENABLE_WAYLAND=1 "${BROWSER}" \
         --kiosk \
         -no-remote \
         -profile "${_FF_PROFILE_DIR}" \
         "${URL}" 9>&- &
 else
+    # X11 / XWayland session → disable GPU WebRender to prevent artefacts.
     MOZ_WEBRENDER=0 "${BROWSER}" \
         --kiosk \
         -no-remote \
