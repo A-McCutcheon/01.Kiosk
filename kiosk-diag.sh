@@ -109,8 +109,11 @@ if [[ ! -f "${FIREFOX_POLICY}" ]]; then
 elif grep -qE '"gfx\.webrender\.all"|"layers\.acceleration\.disabled"' "${FIREFOX_POLICY}" 2>/dev/null; then
     _fail "${FIREFOX_POLICY} contains stale WebRender restrictions that cause a black screen on Wayland"
     echo "     → Re-run: sudo ./install.sh  (updates Firefox policies for Wayland)"
+elif ! grep -q '"gfx.webrender.software"' "${FIREFOX_POLICY}" 2>/dev/null; then
+    _fail "${FIREFOX_POLICY} missing gfx.webrender.software preference (Wayland software-rendering fallback)"
+    echo "     → Re-run: sudo ./install.sh  (updates Firefox policies for Wayland)"
 else
-    _ok  "${FIREFOX_POLICY} present (no stale WebRender restrictions)"
+    _ok  "${FIREFOX_POLICY} present (no stale WebRender restrictions, software fallback enabled)"
 fi
 echo ""
 

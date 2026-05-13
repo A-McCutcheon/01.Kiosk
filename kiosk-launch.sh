@@ -211,11 +211,17 @@ FIREFOX_PID=$!
     done
 
     if [[ -z "${_WIN_ID}" ]] && "${_IS_WAYLAND}"; then
-        echo "kiosk-launch: no X11 Firefox window detected on Wayland; skipping X11 activation fallbacks" >&2
+        echo "kiosk-launch: no X11 Firefox window detected on Wayland; trying Wayland-compatible activation" >&2
+        # On Wayland we only polled for an X11 window for 3 s; Firefox's Wayland
+        # surface may not be registered with GNOME Shell yet.  Wait before
+        # attempting activation so we don't activate a not-yet-mapped window.
+        sleep 5
+        # GNOME Shell Eval (works on GNOME < 41; silently rejected on GNOME 41+
+        # without unsafe-mode – safe to attempt regardless).
         if command -v gdbus &>/dev/null; then
-            _JS="global.get_window_actors()"
-            _JS+=".find(a=>a.meta_window.get_wm_class()?.toLowerCase().includes('firefox'))"
-            _JS+="?.meta_window.activate(global.display.get_current_time())"
+            _JS="let w=global.get_window_actors()"
+            _JS+=".find(a=>a.meta_window.get_wm_class()?.toLowerCase().includes('firefox'));"
+            _JS+="if(w)w.meta_window.activate(global.display.get_current_time())"
             if ! gdbus call --session \
                 --dest org.gnome.Shell \
                 --object-path /org/gnome/Shell \
@@ -227,7 +233,15 @@ FIREFOX_PID=$!
         else
             echo "kiosk-launch: gdbus not found; no Wayland-native activation helper available" >&2
         fi
-        exit 0
+        # wmctrl by window title: on GNOME Wayland, Mutter populates EWMH's
+        # _NET_CLIENT_LIST and _NET_WM_NAME for Wayland-native clients, so
+        # title-based matching works even when WM_CLASS is not bridged.
+        if command -v wmctrl &>/dev/null; then
+            DISPLAY="${_DISP}" wmctrl -a "Mozilla Firefox" 2>/dev/null || true
+            DISPLAY="${_DISP}" wmctrl -a "Firefox"         2>/dev/null || true
+        fi
+        # Do NOT exit here; fall through to FALLBACK A (wmctrl by WM_CLASS –
+        # Mutter may also provide WM_CLASS for the bridged Wayland window).
     fi
 
     # ── Wait for Firefox to paint its first frame ─────────────────────────
