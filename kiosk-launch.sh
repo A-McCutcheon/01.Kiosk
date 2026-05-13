@@ -109,6 +109,27 @@ if ! "${_compositor_was_ready}"; then
     sleep 5
 fi
 
+# ── Prepare a dedicated Firefox profile for kiosk mode ───────────────────
+# A fixed profile path lets us write renderer settings via user.js before
+# every launch.  user.js is read unconditionally by Firefox on startup,
+# which is more reliable than enterprise policies: snap-packaged Firefox on
+# Ubuntu may not read /etc/firefox/policies/ (requires the etc-firefox snap
+# interface), and Firefox's enterprise Preferences policy only applies to an
+# internal allowlist that excludes some gfx.* preferences.
+_FF_PROFILE_DIR="${HOME}/.config/kiosk/firefox-profile"
+mkdir -p "${_FF_PROFILE_DIR}"
+# Rewrite user.js on every launch so renderer settings are always current.
+cat > "${_FF_PROFILE_DIR}/user.js" <<'EOF'
+/* kiosk-managed — rewritten by kiosk-launch.sh before every launch */
+/* Force software (CPU) WebRender to prevent black screens on Wayland kiosk.
+   gfx.webrender.software uses Firefox's own swgl (software WebGL) backend
+   so rendering works on any hardware regardless of GPU driver support.      */
+user_pref("gfx.webrender.software", true);
+user_pref("gfx.webrender.software.opengl", false);
+/* Suppress crash-restore prompt for clean kiosk startup */
+user_pref("browser.sessionstore.resume_from_crash", false);
+EOF
+
 # ── Launch Firefox in background ───────────────────────────────────────────
 # Run Firefox natively in the current session (Wayland on GNOME by default).
 #
@@ -123,6 +144,8 @@ fi
 # environments (e.g. systemd user services) where auto-detection is less
 # reliable.
 #
+# -profile       – use the dedicated kiosk profile so user.js settings above
+#                  are applied on every launch.
 # --kiosk        – full-screen, no browser UI, no exit via keyboard shortcuts.
 # -no-remote     – always start a fresh Firefox process; do not reuse any
 #                  existing instance that might not be in kiosk mode.
@@ -131,11 +154,13 @@ if [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     MOZ_ENABLE_WAYLAND=1 "${BROWSER}" \
         --kiosk \
         -no-remote \
+        -profile "${_FF_PROFILE_DIR}" \
         "${URL}" 9>&- &
 else
     MOZ_WEBRENDER=0 "${BROWSER}" \
         --kiosk \
         -no-remote \
+        -profile "${_FF_PROFILE_DIR}" \
         "${URL}" 9>&- &
 fi
 FIREFOX_PID=$!

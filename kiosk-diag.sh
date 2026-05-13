@@ -109,11 +109,22 @@ if [[ ! -f "${FIREFOX_POLICY}" ]]; then
 elif grep -qE '"gfx\.webrender\.all"|"layers\.acceleration\.disabled"' "${FIREFOX_POLICY}" 2>/dev/null; then
     _fail "${FIREFOX_POLICY} contains stale WebRender restrictions that cause a black screen on Wayland"
     echo "     → Re-run: sudo ./install.sh  (updates Firefox policies for Wayland)"
-elif ! grep -q '"gfx.webrender.software"' "${FIREFOX_POLICY}" 2>/dev/null; then
-    _fail "${FIREFOX_POLICY} missing gfx.webrender.software preference (Wayland software-rendering fallback)"
-    echo "     → Re-run: sudo ./install.sh  (updates Firefox policies for Wayland)"
 else
-    _ok  "${FIREFOX_POLICY} present (no stale WebRender restrictions, software fallback enabled)"
+    _ok  "${FIREFOX_POLICY} present (no stale WebRender restrictions)"
+fi
+echo ""
+
+# ── Firefox kiosk profile ─────────────────────────────────────────────────
+echo "── Firefox kiosk profile ─────────────────────────────────────────────"
+KIOSK_USER_JS="${KIOSK_HOME}/.config/kiosk/firefox-profile/user.js"
+if [[ ! -f "${KIOSK_USER_JS}" ]]; then
+    _fail "${KIOSK_USER_JS} missing – kiosk profile not yet created"
+    echo "     → Launch the kiosk once or re-run: sudo ./install.sh"
+elif ! grep -q 'gfx.webrender.software' "${KIOSK_USER_JS}" 2>/dev/null; then
+    _fail "${KIOSK_USER_JS} does not contain WebRender software preference"
+    echo "     → Re-run: sudo ./install.sh  (copies latest kiosk-launch.sh)"
+else
+    _ok  "${KIOSK_USER_JS} present (WebRender software mode enabled)"
 fi
 echo ""
 
@@ -122,11 +133,14 @@ echo "── Installed script freshness ─────────────�
 INSTALLED_LAUNCH="/opt/kiosk/kiosk-launch.sh"
 if [[ ! -f "${INSTALLED_LAUNCH}" ]]; then
     _fail "${INSTALLED_LAUNCH} missing – re-run: sudo ./install.sh"
-elif grep -q 'MOZ_ENABLE_WAYLAND=1' "${INSTALLED_LAUNCH}" 2>/dev/null; then
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (Wayland-native launch)"
-else
+elif ! grep -q 'MOZ_ENABLE_WAYLAND=1' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing Wayland-native launch support)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'firefox-profile' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing dedicated kiosk profile for WebRender user.js)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+else
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (Wayland-native launch, kiosk profile)"
 fi
 echo ""
 
