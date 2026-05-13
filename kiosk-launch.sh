@@ -117,9 +117,9 @@ fi
 # interface), and Firefox's enterprise Preferences policy only applies to an
 # internal allowlist that excludes some gfx.* preferences.
 _FF_PROFILE_DIR="${HOME}/.config/kiosk/firefox-profile"
-mkdir -p "${_FF_PROFILE_DIR}"
-# Rewrite user.js on every launch so renderer settings are always current.
-cat > "${_FF_PROFILE_DIR}/user.js" <<'EOF'
+if mkdir -p "${_FF_PROFILE_DIR}" && [[ -w "${_FF_PROFILE_DIR}" ]]; then
+    # Rewrite user.js on every launch so renderer settings are always current.
+    cat > "${_FF_PROFILE_DIR}/user.js" <<'EOF'
 /* kiosk-managed — rewritten by kiosk-launch.sh before every launch */
 /* Force software (CPU) WebRender to prevent black screens on Wayland kiosk.
    gfx.webrender.software uses Firefox's own swgl (software WebGL) backend
@@ -129,6 +129,9 @@ user_pref("gfx.webrender.software.opengl", false);
 /* Suppress crash-restore prompt for clean kiosk startup */
 user_pref("browser.sessionstore.resume_from_crash", false);
 EOF
+else
+    echo "kiosk-launch: WARNING: cannot write to ${_FF_PROFILE_DIR}; WebRender user.js not applied" >&2
+fi
 
 # ── Launch Firefox in background ───────────────────────────────────────────
 # Run Firefox natively in the current session (Wayland on GNOME by default).

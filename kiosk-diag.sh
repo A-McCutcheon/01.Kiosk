@@ -118,11 +118,12 @@ echo ""
 echo "── Firefox kiosk profile ─────────────────────────────────────────────"
 KIOSK_USER_JS="${KIOSK_HOME}/.config/kiosk/firefox-profile/user.js"
 if [[ ! -f "${KIOSK_USER_JS}" ]]; then
-    _fail "${KIOSK_USER_JS} missing – kiosk profile not yet created"
-    echo "     → Launch the kiosk once or re-run: sudo ./install.sh"
+    _fail "${KIOSK_USER_JS} missing – profile not yet created by kiosk-launch.sh"
+    echo "     → Launch the kiosk once (it will be created on first run)"
+    echo "     → Or re-run: sudo ./install.sh  then reboot"
 elif ! grep -q 'gfx.webrender.software' "${KIOSK_USER_JS}" 2>/dev/null; then
     _fail "${KIOSK_USER_JS} does not contain WebRender software preference"
-    echo "     → Re-run: sudo ./install.sh  (copies latest kiosk-launch.sh)"
+    echo "     → Re-run: sudo ./install.sh  then reboot (copies updated kiosk-launch.sh)"
 else
     _ok  "${KIOSK_USER_JS} present (WebRender software mode enabled)"
 fi
