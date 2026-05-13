@@ -117,12 +117,18 @@ fi
 # surface.  On X11/XWayland, MOZ_WEBRENDER=0 prevents GPU rendering artefacts
 # seen on some drivers.  Set the flag only when the session is not Wayland.
 #
+# MOZ_ENABLE_WAYLAND=1 explicitly requests the Wayland backend in Firefox.
+# Without it, Firefox may auto-detect Wayland from WAYLAND_DISPLAY, but
+# setting it explicitly ensures the correct backend is used even in
+# environments (e.g. systemd user services) where auto-detection is less
+# reliable.
+#
 # --kiosk        – full-screen, no browser UI, no exit via keyboard shortcuts.
 # -no-remote     – always start a fresh Firefox process; do not reuse any
 #                  existing instance that might not be in kiosk mode.
 _LAUNCH_SESSION_LC="$(printf '%s' "${XDG_SESSION_TYPE:-}" | tr '[:upper:]' '[:lower:]')"
 if [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
-    "${BROWSER}" \
+    MOZ_ENABLE_WAYLAND=1 "${BROWSER}" \
         --kiosk \
         -no-remote \
         "${URL}" 9>&- &

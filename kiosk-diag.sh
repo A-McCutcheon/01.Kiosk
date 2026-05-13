@@ -101,6 +101,32 @@ for tool in xdotool wmctrl gdbus; do
 done
 echo ""
 
+# ── Firefox policies ──────────────────────────────────────────────────────
+echo "── Firefox rendering policies ────────────────────────────────────────"
+FIREFOX_POLICY="/etc/firefox/policies/policies.json"
+if [[ ! -f "${FIREFOX_POLICY}" ]]; then
+    _fail "${FIREFOX_POLICY} missing – re-run: sudo ./install.sh"
+elif grep -qE '"gfx\.webrender\.all"|"layers\.acceleration\.disabled"' "${FIREFOX_POLICY}" 2>/dev/null; then
+    _fail "${FIREFOX_POLICY} contains stale WebRender restrictions that cause a black screen on Wayland"
+    echo "     → Re-run: sudo ./install.sh  (updates Firefox policies for Wayland)"
+else
+    _ok  "${FIREFOX_POLICY} present (no stale WebRender restrictions)"
+fi
+echo ""
+
+# ── Installed script freshness ────────────────────────────────────────────
+echo "── Installed script freshness ────────────────────────────────────────"
+INSTALLED_LAUNCH="/opt/kiosk/kiosk-launch.sh"
+if [[ ! -f "${INSTALLED_LAUNCH}" ]]; then
+    _fail "${INSTALLED_LAUNCH} missing – re-run: sudo ./install.sh"
+elif grep -q 'MOZ_ENABLE_WAYLAND=1' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (Wayland-native launch)"
+else
+    _fail "${INSTALLED_LAUNCH} is outdated (missing Wayland-native launch support)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+fi
+echo ""
+
 # ── GDM3 journal ──────────────────────────────────────────────────────────
 echo "── GDM3 recent journal (last 30 lines) ───────────────────────────────"
 if command -v journalctl &>/dev/null; then
