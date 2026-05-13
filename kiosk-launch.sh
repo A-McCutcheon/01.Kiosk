@@ -18,8 +18,11 @@ set -euo pipefail
 # flock acquires an exclusive lock on the lock-file; the second invocation
 # exits immediately rather than starting a second Firefox instance.
 # XDG_RUNTIME_DIR is user-private (mode 0700, tmpfs) so it is safe for
-# lock files; fall back to ~/.cache which is always user-specific.
-LOCK_FILE="${XDG_RUNTIME_DIR:-${HOME}/.cache}/kiosk-launch.lock"
+# lock files; compute the fallback from the real UID so that both the
+# systemd user service (where XDG_RUNTIME_DIR is always set) and any
+# residual autostart process (where it may be absent) resolve to the
+# same path and therefore share the same lock.
+LOCK_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kiosk-launch.lock"
 exec 9>"${LOCK_FILE}"
 if ! flock -n 9; then
     echo "kiosk-launch.sh: another instance is already running; exiting." >&2
@@ -107,6 +110,26 @@ fi
 # freeze after "Launch Kiosk" is clicked.
 if ! "${_compositor_was_ready}"; then
     sleep 5
+fi
+
+# ── Wake up XWayland before the Firefox launch ────────────────────────────
+# On GNOME Wayland, Mutter lazy-starts XWayland: the X server socket exists
+# immediately, but the XWayland process itself is only spawned when the first
+# X11 client connects.  If Firefox hits the socket before XWayland is ready
+# it may get a connection-refused error and silently fall back to Wayland or
+# exit.  Connecting a harmless X11 tool now forces Mutter to start XWayland
+# and wait for it to finish initialising before Firefox tries to connect.
+if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]] && command -v xdotool &>/dev/null; then
+    _xw_display="${DISPLAY:-:0}"
+    _xw_ready=false
+    for _ in $(seq 1 10); do
+        if DISPLAY="${_xw_display}" xdotool getmouselocation &>/dev/null; then
+            _xw_ready=true
+            break
+        fi
+        sleep 1
+    done
+    echo "kiosk-launch: XWayland probe: display=${_xw_display} ready=${_xw_ready}" >&2
 fi
 
 # ── Prepare a dedicated Firefox profile for kiosk mode ───────────────────
@@ -386,6 +409,7 @@ else
         "${URL}" 9>&- &
 fi
 FIREFOX_PID=$!
+echo "kiosk-launch: Firefox launched PID=${FIREFOX_PID} XAUTHORITY=${XAUTHORITY:-<unset>} DISPLAY=${DISPLAY:-<unset>} SESSION=${XDG_SESSION_TYPE:-<unset>}" >&2
 
 # ── Post-launch: wait for Firefox window and activate it ─────────────────
 # On Wayland, fullscreen windows started without an XDG activation token
@@ -454,17 +478,18 @@ FIREFOX_PID=$!
     fi
     # Poll up to _WINDOW_SEARCH_RETRIES seconds (1s intervals).  Firefox's
     # browser window WM_CLASS:
-    #   instance = "Navigator"   class = "Firefox"
-    # Try the most reliable pattern first, then fall back to others.
+    #   instance = "Navigator"   class = "Firefox" or "firefox" (snap Firefox)
+    # Try the most reliable patterns first, then fall back to others.
     _WIN_ID=""
     for _i in $(seq 1 "${_WINDOW_SEARCH_RETRIES}"); do
-        for _pat in "--classname Navigator" "--class Firefox" "--classname firefox"; do
+        for _pat in "--classname Navigator" "--class Firefox" "--class firefox" "--classname firefox"; do
             # shellcheck disable=SC2086
             _WIN_ID=$(DISPLAY="${_DISP}" xdotool search ${_pat} 2>/dev/null | head -1)
             [[ -n "${_WIN_ID}" ]] && break 2
         done
         sleep 1
     done
+    echo "kiosk-launch: xdotool search complete: WIN_ID=${_WIN_ID:-<none>} IS_WAYLAND=${_IS_WAYLAND} XAUTHORITY=${_XAUTH:-<unset>}" >&2
 
     if [[ -z "${_WIN_ID}" ]] && "${_IS_WAYLAND}"; then
         echo "kiosk-launch: no X11 Firefox window detected on Wayland; trying Wayland-compatible activation" >&2

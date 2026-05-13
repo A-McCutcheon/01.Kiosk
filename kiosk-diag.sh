@@ -181,8 +181,11 @@ elif ! grep -q 'env -u WAYLAND_DISPLAY' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q '_WAYLAND_SESSION' /opt/kiosk/kiosk-exit-overlay.py 2>/dev/null; then
     _fail "/opt/kiosk/kiosk-exit-overlay.py is outdated (missing Wayland-aware overlay detection)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'XWayland probe' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing XWayland wake-up probe and double-launch fix)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (Wayland-native launch, kiosk profile, lock cleanup, snap fix, snap XWayland, FF131+)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (Wayland-native launch, kiosk profile, lock cleanup, snap fix, snap XWayland, FF131+, XWayland probe)"
 fi
 echo ""
 
