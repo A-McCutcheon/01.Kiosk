@@ -116,7 +116,21 @@ echo ""
 
 # ── Firefox kiosk profile ─────────────────────────────────────────────────
 echo "── Firefox kiosk profile ─────────────────────────────────────────────"
-KIOSK_USER_JS="${KIOSK_HOME}/.config/kiosk/firefox-profile/user.js"
+# Mirror kiosk-launch.sh: detect snap Firefox so we check the correct
+# profile path.  Snap confinement's 'home' interface excludes dot-dirs
+# (e.g. ~/.config/), so snap Firefox ignores -profile paths there and
+# uses ~/snap/firefox/common/ instead.
+_diag_ff_bin_path="$(command -v firefox 2>/dev/null || command -v firefox-esr 2>/dev/null || true)"
+_diag_ff_bin_real="$(readlink -f "${_diag_ff_bin_path}" 2>/dev/null || true)"
+_diag_ff_is_snap=false
+if [[ "${_diag_ff_bin_path}" == /snap/* ]] || [[ "${_diag_ff_bin_real}" == /snap/* ]]; then
+    _diag_ff_is_snap=true
+fi
+if "${_diag_ff_is_snap}"; then
+    KIOSK_USER_JS="${KIOSK_HOME}/snap/firefox/common/kiosk-profile/user.js"
+else
+    KIOSK_USER_JS="${KIOSK_HOME}/.config/kiosk/firefox-profile/user.js"
+fi
 if [[ ! -f "${KIOSK_USER_JS}" ]]; then
     _fail "${KIOSK_USER_JS} missing – profile not yet created by kiosk-launch.sh"
     echo "     → Launch the kiosk once (it will be created on first run)"
@@ -143,11 +157,14 @@ elif ! grep -q 'firefox-profile' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q 'rm -rf.*_FF_PROFILE_DIR\|wipe.*profile\|Recreate the kiosk' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing wipe-profile-on-launch fix)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q '_FF_IS_SNAP\|snap/firefox/common/kiosk-profile' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing snap Firefox profile path fix)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 elif ! grep -q '_WAYLAND_SESSION' /opt/kiosk/kiosk-exit-overlay.py 2>/dev/null; then
     _fail "/opt/kiosk/kiosk-exit-overlay.py is outdated (missing Wayland-aware overlay detection)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (Wayland-native launch, kiosk profile, lock cleanup)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (Wayland-native launch, kiosk profile, lock cleanup, snap fix)"
 fi
 echo ""
 

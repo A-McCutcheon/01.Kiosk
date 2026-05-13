@@ -116,7 +116,35 @@ fi
 # Ubuntu may not read /etc/firefox/policies/ (requires the etc-firefox snap
 # interface), and Firefox's enterprise Preferences policy only applies to an
 # internal allowlist that excludes some gfx.* preferences.
-_FF_PROFILE_DIR="${HOME}/.config/kiosk/firefox-profile"
+#
+# IMPORTANT – snap Firefox confinement and dot-directories:
+# The snap 'home' interface grants access to $HOME/* but intentionally
+# excludes dot-directories (those starting with '.').  This means a profile
+# path under ~/.config/ is inaccessible inside the snap mount-namespace and
+# the -profile flag is silently ignored; snap Firefox then falls back to its
+# own default profile at ~/snap/firefox/common/.mozilla/firefox/, which may
+# contain a stale lock file from a previous unclean shutdown and trigger the
+# "Firefox is already running" dialog.
+#
+# The fix: detect snap Firefox and use a profile path inside the snap app's
+# $SNAP_USER_COMMON (~/snap/firefox/common/) which is always readable and
+# writable inside the snap confinement, is persistent across snap updates,
+# and is never remapped by the dot-directory exclusion.
+_FF_IS_SNAP=false
+_ff_bin_path="$(command -v "${BROWSER}" 2>/dev/null || true)"
+_ff_bin_real="$(readlink -f "${_ff_bin_path}" 2>/dev/null || true)"
+if [[ "${_ff_bin_path}" == /snap/* ]] || [[ "${_ff_bin_real}" == /snap/* ]]; then
+    _FF_IS_SNAP=true
+fi
+
+if "${_FF_IS_SNAP}"; then
+    # ~/snap/firefox/common/ is the snap app's $SNAP_USER_COMMON — fully
+    # accessible inside the snap confinement, stable across snap updates,
+    # and not subject to the dot-directory restriction of the 'home' interface.
+    _FF_PROFILE_DIR="${HOME}/snap/firefox/common/kiosk-profile"
+else
+    _FF_PROFILE_DIR="${HOME}/.config/kiosk/firefox-profile"
+fi
 
 # ── Kill any lingering Firefox process before launching ───────────────────
 # If Firefox was running when the machine was rebooted or the script was
