@@ -120,11 +120,20 @@ echo "── Firefox kiosk profile ───────────────
 # profile path.  Snap confinement's 'home' interface excludes dot-dirs
 # (e.g. ~/.config/), so snap Firefox ignores -profile paths there and
 # uses ~/snap/firefox/common/ instead.
+# On Ubuntu 22.04+, apt installs a shell-script wrapper at /usr/bin/firefox
+# that exec's the snap binary; readlink -f stays at /usr/bin/firefox so a
+# plain path check misses it.  Use 'snap list' as the authoritative check.
 _diag_ff_bin_path="$(command -v firefox 2>/dev/null || command -v firefox-esr 2>/dev/null || true)"
 _diag_ff_bin_real="$(readlink -f "${_diag_ff_bin_path}" 2>/dev/null || true)"
 _diag_ff_is_snap=false
 if [[ "${_diag_ff_bin_path}" == /snap/* ]] || [[ "${_diag_ff_bin_real}" == /snap/* ]]; then
     _diag_ff_is_snap=true
+fi
+if ! "${_diag_ff_is_snap}" && command -v snap &>/dev/null; then
+    snap list firefox &>/dev/null && _diag_ff_is_snap=true || true
+fi
+if ! "${_diag_ff_is_snap}"; then
+    [[ -d /snap/firefox ]] && _diag_ff_is_snap=true || true
 fi
 if "${_diag_ff_is_snap}"; then
     KIOSK_USER_JS="${KIOSK_HOME}/snap/firefox/common/kiosk-profile/user.js"
@@ -159,6 +168,9 @@ elif ! grep -q 'rm -rf.*_FF_PROFILE_DIR\|wipe.*profile\|Recreate the kiosk' "${I
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 elif ! grep -q '_FF_IS_SNAP\|snap/firefox/common/kiosk-profile' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing snap Firefox profile path fix)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'snap list firefox' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (snap detection uses only readlink; misses Ubuntu 22.04+ apt wrapper)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 elif ! grep -q '_WAYLAND_SESSION' /opt/kiosk/kiosk-exit-overlay.py 2>/dev/null; then
     _fail "/opt/kiosk/kiosk-exit-overlay.py is outdated (missing Wayland-aware overlay detection)"

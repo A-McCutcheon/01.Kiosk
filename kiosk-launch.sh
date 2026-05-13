@@ -131,10 +131,24 @@ fi
 # writable inside the snap confinement, is persistent across snap updates,
 # and is never remapped by the dot-directory exclusion.
 _FF_IS_SNAP=false
+# Check 1 – snap binary path (snap-installed Firefox where /snap/bin/firefox
+#            is on PATH, or the canonical location is under /snap/).
 _ff_bin_path="$(command -v "${BROWSER}" 2>/dev/null || true)"
 _ff_bin_real="$(readlink -f "${_ff_bin_path}" 2>/dev/null || true)"
 if [[ "${_ff_bin_path}" == /snap/* ]] || [[ "${_ff_bin_real}" == /snap/* ]]; then
     _FF_IS_SNAP=true
+fi
+# Check 2 – snap list (most authoritative; handles the Ubuntu 22.04+ case
+#            where apt installs a shell-script wrapper at /usr/bin/firefox
+#            that exec's the snap binary — readlink -f returns /usr/bin/firefox
+#            so check 1 above would otherwise miss it).
+if ! "${_FF_IS_SNAP}" && command -v snap &>/dev/null; then
+    snap list firefox &>/dev/null && _FF_IS_SNAP=true || true
+fi
+# Check 3 – snap installation directory exists (fallback when snap command
+#            is unavailable, e.g. in a minimal chroot or CI environment).
+if ! "${_FF_IS_SNAP}"; then
+    [[ -d /snap/firefox ]] && _FF_IS_SNAP=true || true
 fi
 
 if "${_FF_IS_SNAP}"; then
