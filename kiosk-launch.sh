@@ -118,6 +118,13 @@ fi
 # internal allowlist that excludes some gfx.* preferences.
 _FF_PROFILE_DIR="${HOME}/.config/kiosk/firefox-profile"
 if mkdir -p "${_FF_PROFILE_DIR}" && [[ -w "${_FF_PROFILE_DIR}" ]]; then
+    # Remove any stale Firefox profile lock files left by a previous crash or
+    # unclean shutdown.  Firefox writes a 'lock' symlink and a '.parentlock'
+    # file when it starts; if it is killed or the machine is rebooted without a
+    # clean Firefox shutdown those files remain, causing the next launch to show
+    # the "Firefox is already running, but is not responding" error dialog
+    # instead of opening the kiosk page.
+    rm -f "${_FF_PROFILE_DIR}/lock" "${_FF_PROFILE_DIR}/.parentlock"
     # Rewrite user.js on every launch so renderer settings are always current.
     cat > "${_FF_PROFILE_DIR}/user.js" <<'EOF'
 /* kiosk-managed — rewritten by kiosk-launch.sh before every launch */
