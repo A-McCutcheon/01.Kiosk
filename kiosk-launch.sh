@@ -6,9 +6,9 @@
 # When the browser exits the configuration app is re-opened automatically.
 #
 # Firefox is used because it integrates with GNOME's on-screen keyboard flow.
-# We explicitly force Firefox onto XWayland (MOZ_ENABLE_WAYLAND=0) so the
-# xdotool/wmctrl-based window detection and activation path can reliably find
-# and focus the browser window on GNOME Wayland systems.
+# Launch Firefox natively for the current desktop session (Wayland by default
+# on modern GNOME).  X11-only helpers (xdotool/wmctrl) are best-effort and
+# must never be treated as required for launch success on Wayland.
 
 set -euo pipefail
 
@@ -110,8 +110,7 @@ if ! "${_compositor_was_ready}"; then
 fi
 
 # ── Launch Firefox in background ───────────────────────────────────────────
-# Force Firefox to use XWayland so xdotool/wmctrl can detect and activate the
-# browser window reliably on GNOME Wayland sessions.
+# Run Firefox natively in the current session (Wayland on GNOME by default).
 #
 # MOZ_WEBRENDER=0 disables Firefox's GPU WebRender compositor, which can
 # cause screen artefacts and redraw glitches on some graphics drivers.
@@ -121,7 +120,7 @@ fi
 # --kiosk        – full-screen, no browser UI, no exit via keyboard shortcuts.
 # -no-remote     – always start a fresh Firefox process; do not reuse any
 #                  existing instance that might not be in kiosk mode.
-MOZ_ENABLE_WAYLAND=0 MOZ_WEBRENDER=0 "${BROWSER}" \
+MOZ_WEBRENDER=0 "${BROWSER}" \
     --kiosk \
     -no-remote \
     "${URL}" 9>&- &
@@ -150,6 +149,7 @@ FIREFOX_PID=$!
     # Tuning knobs (kept near the top for easy adjustment).
     _ACTIVATION_RETRIES=3   # how many times to re-send each activation method
     _RETRY_DELAY=1          # seconds between retry attempts
+    _SESSION_TYPE="${XDG_SESSION_TYPE:-}"
 
     # ── Environment setup ─────────────────────────────────────────────────
     # DISPLAY: XWayland always binds to :0 on a standard GNOME session.
@@ -172,12 +172,19 @@ FIREFOX_PID=$!
     fi
     [[ -n "${_XAUTH}" ]] && export XAUTHORITY="${_XAUTH}"
 
-    # ── Wait for Firefox window to appear ─────────────────────────────────
-    # Poll up to 30s (1s intervals).  Firefox's browser window WM_CLASS:
+    # ── Wait for Firefox X11 window to appear (best-effort) ───────────────
+    # On native Wayland Firefox may not expose an X11 window to xdotool at all.
+    # Keep this check best-effort and short on Wayland sessions.
+    _WINDOW_SEARCH_RETRIES=30
+    if [[ "${_SESSION_TYPE,,}" == "wayland" ]]; then
+        _WINDOW_SEARCH_RETRIES=3
+    fi
+    # Poll up to _WINDOW_SEARCH_RETRIES seconds (1s intervals).  Firefox's
+    # browser window WM_CLASS:
     #   instance = "Navigator"   class = "Firefox"
     # Try the most reliable pattern first, then fall back to others.
     _WIN_ID=""
-    for _i in $(seq 1 30); do
+    for _i in $(seq 1 "${_WINDOW_SEARCH_RETRIES}"); do
         for _pat in "--classname Navigator" "--class Firefox" "--classname firefox"; do
             # shellcheck disable=SC2086
             _WIN_ID=$(DISPLAY="${_DISP}" xdotool search ${_pat} 2>/dev/null | head -1)
@@ -185,6 +192,22 @@ FIREFOX_PID=$!
         done
         sleep 1
     done
+
+    if [[ -z "${_WIN_ID}" && "${_SESSION_TYPE,,}" == "wayland" ]]; then
+        echo "kiosk-launch: no X11 Firefox window detected on Wayland; skipping X11 activation fallbacks" >&2
+        if command -v gdbus &>/dev/null; then
+            _JS="global.get_window_actors()"
+            _JS+=".find(a=>a.meta_window.get_wm_class()?.toLowerCase().includes('firefox'))"
+            _JS+="?.meta_window.activate(global.display.get_current_time())"
+            gdbus call --session \
+                --dest org.gnome.Shell \
+                --object-path /org/gnome/Shell \
+                --method org.gnome.Shell.Eval \
+                "${_JS}" \
+                2>/dev/null || true
+        fi
+        exit 0
+    fi
 
     # ── Wait for Firefox to paint its first frame ─────────────────────────
     # xdotool finds the XWayland window handle as soon as Firefox maps it
