@@ -286,11 +286,15 @@ EOF
 #   never receives an expose/focus event from Mutter, leaving the screen
 #   permanently black.
 #
-#   Fix: force snap Firefox onto XWayland with GDK_BACKEND=x11 +
-#   MOZ_ENABLE_WAYLAND=0.  XWayland windows are visible to xdotool/wmctrl and
-#   don't require an activation token for focus.  MOZ_WEBRENDER=0 disables
-#   GPU WebRender (hardware WebRender on XWayland/Mesa can produce artefacts
-#   or a black surface on VMs and systems with limited driver support).
+#   Fix: force snap Firefox onto XWayland with MOZ_ENABLE_WAYLAND=0.
+#   XWayland windows are visible to xdotool/wmctrl and don't require an
+#   activation token for focus.  MOZ_WEBRENDER=0 disables GPU WebRender
+#   (hardware WebRender on XWayland/Mesa can produce artefacts or a black
+#   surface on VMs and systems with limited driver support).
+#   NOTE: GDK_BACKEND=x11 is intentionally NOT used — Firefox manages its
+#   window backend via MOZ_ENABLE_WAYLAND, not GTK's GDK_BACKEND.  Setting
+#   GDK_BACKEND=x11 targets only GTK dialogs and causes a crash inside the
+#   snap sandbox before Firefox opens any window.
 #
 # apt/non-snap Firefox on a Wayland session
 #   MOZ_ENABLE_WAYLAND=1 requests the native Wayland back-end.  Without this,
@@ -307,10 +311,25 @@ EOF
 #   -no-remote – always start a fresh process; never reuse an existing
 #               instance that might not be in kiosk mode.
 _LAUNCH_SESSION_LC="$(printf '%s' "${XDG_SESSION_TYPE:-}" | tr '[:upper:]' '[:lower:]')"
+# _FF_USING_XWAYLAND: set to true when snap Firefox is forced onto XWayland so
+# the activation subshell can treat the window as X11 (full 30-retry poll,
+# skip the Wayland GNOME Shell Eval fallback path).
+_FF_USING_XWAYLAND=false
 if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # snap Firefox on Wayland → force XWayland so xdotool/wmctrl can manage
     # the window and --kiosk focus is granted without an activation token.
-    GDK_BACKEND=x11 MOZ_ENABLE_WAYLAND=0 MOZ_WEBRENDER=0 "${BROWSER}" \
+    #
+    # NOTE: GDK_BACKEND=x11 is intentionally NOT set here.  Firefox manages
+    # its own Wayland/X11 backend selection independently of GTK; GDK_BACKEND
+    # affects GTK's backend (used only by bundled dialogs) and can cause the
+    # GTK x11 backend to fail inside the snap sandbox, crashing Firefox before
+    # it opens any window.  MOZ_ENABLE_WAYLAND=0 is the correct and sufficient
+    # variable to force Firefox's own X11 (XWayland) backend.
+    #
+    # DISPLAY is set explicitly so Firefox can open the XWayland socket even
+    # when DISPLAY is absent from the systemd user-service environment.
+    _FF_USING_XWAYLAND=true
+    DISPLAY="${DISPLAY:-:0}" MOZ_ENABLE_WAYLAND=0 MOZ_WEBRENDER=0 "${BROWSER}" \
         --kiosk \
         -no-remote \
         -profile "${_FF_PROFILE_DIR}" \
@@ -361,6 +380,13 @@ FIREFOX_PID=$!
     _SESSION_TYPE_LC="$(printf '%s' "${_SESSION_TYPE}" | tr '[:upper:]' '[:lower:]')"
     _IS_WAYLAND=false
     [[ "${_SESSION_TYPE_LC}" == "wayland" ]] && _IS_WAYLAND=true
+
+    # When snap Firefox was forced onto XWayland, treat the window as X11 for
+    # all activation logic: use the full 30-retry X11 poll (not the 3-retry
+    # Wayland shortcut) and skip the Wayland-only GNOME Shell Eval fallback.
+    if "${_FF_USING_XWAYLAND:-false}"; then
+        _IS_WAYLAND=false
+    fi
 
     # ── Environment setup ─────────────────────────────────────────────────
     # DISPLAY: XWayland always binds to :0 on a standard GNOME session.
