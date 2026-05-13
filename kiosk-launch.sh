@@ -135,20 +135,53 @@ for _ff_pid in ${_ff_pids_raw}; do
     echo "kiosk-launch: killing lingering Firefox process (PID ${_ff_pid})" >&2
     kill "${_ff_pid}" 2>/dev/null || true
 done
-# Give processes up to 3 seconds to exit cleanly before we remove the lock.
+# Wait up to 10 s for each killed process to actually exit (checking every
+# 0.5 s) before removing the lock files.  A fixed sleep is not sufficient
+# because snap Firefox can take several seconds to clean up its sandbox.
 if [[ -n "${_ff_pids_raw//[$'\n ']/}" ]]; then
-    sleep 3
+    for _i in $(seq 1 20); do
+        _ff_any_alive=false
+        for _ff_pid in ${_ff_pids_raw}; do
+            [[ -n "${_ff_pid}" ]] || continue
+            kill -0 "${_ff_pid}" 2>/dev/null && { _ff_any_alive=true; break; }
+        done
+        "${_ff_any_alive}" || break
+        sleep 0.5
+    done
+    # Force-kill any process that did not exit within the grace period.
+    for _ff_pid in ${_ff_pids_raw}; do
+        [[ -n "${_ff_pid}" ]] || continue
+        if kill -0 "${_ff_pid}" 2>/dev/null; then
+            echo "kiosk-launch: force-killing non-responsive Firefox (PID ${_ff_pid})" >&2
+            kill -9 "${_ff_pid}" 2>/dev/null || true
+        fi
+    done
+    sleep 0.5  # allow the OS to release file locks after SIGKILL
 fi
 
-if mkdir -p "${_FF_PROFILE_DIR}" && [[ -w "${_FF_PROFILE_DIR}" ]]; then
-    # Remove any stale Firefox profile lock files left by a previous crash or
-    # unclean shutdown.  Firefox writes a 'lock' symlink and a '.parentlock'
-    # file when it starts; if it is killed or the machine is rebooted without a
-    # clean Firefox shutdown those files remain, causing the next launch to show
-    # the "Firefox is already running, but is not responding" error dialog
-    # instead of opening the kiosk page.
-    rm -f "${_FF_PROFILE_DIR}/lock" "${_FF_PROFILE_DIR}/.parentlock"
-    # Rewrite user.js on every launch so renderer settings are always current.
+# ── Remove stale Firefox profile lock files ────────────────────────────────
+# Firefox writes a 'lock' symlink and a '.parentlock' file when it starts;
+# an unclean shutdown (crash, power loss, SIGKILL) leaves both files behind
+# and the next launch shows "Firefox is already running, but is not
+# responding" instead of the kiosk page.
+#
+# Clean all known profile locations unconditionally — not just our custom
+# profile.  On Ubuntu the snap Firefox may keep its default profile under
+# ~/snap/firefox/common/.mozilla/firefox/ and can show the dialog from that
+# profile's stale lock even when a custom -profile path is specified.
+mkdir -p "${_FF_PROFILE_DIR}" 2>/dev/null || true
+rm -f "${_FF_PROFILE_DIR}/lock" "${_FF_PROFILE_DIR}/.parentlock"
+# shellcheck disable=SC2231
+for _ff_lock_dir in \
+        "${HOME}/.mozilla/firefox/"* \
+        "${HOME}/snap/firefox/common/.mozilla/firefox/"*; do
+    [[ -d "${_ff_lock_dir}" ]] || continue
+    rm -f "${_ff_lock_dir}/lock" "${_ff_lock_dir}/.parentlock"
+done
+
+# ── Write renderer preferences into the kiosk profile ────────────────────
+# Rewrite user.js on every launch so renderer settings are always current.
+if [[ -w "${_FF_PROFILE_DIR}" ]]; then
     cat > "${_FF_PROFILE_DIR}/user.js" <<'EOF'
 /* kiosk-managed — rewritten by kiosk-launch.sh before every launch */
 /* Force software (CPU) WebRender to prevent black screens on Wayland kiosk.
