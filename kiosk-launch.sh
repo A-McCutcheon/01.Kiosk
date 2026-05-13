@@ -339,15 +339,27 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # Mutter's XWayland auth file (written to $XDG_RUNTIME_DIR on every boot)
     # and export it before launching so Firefox always gets a valid credential.
     if [[ -z "${XAUTHORITY:-}" ]]; then
-        _xauth_rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-        for _xauth_cand in "${_xauth_rt}"/.mutter-Xwaylandauth.* \
-                            "${HOME}/.Xauthority"; do
-            if [[ -f "${_xauth_cand}" ]]; then
-                export XAUTHORITY="${_xauth_cand}"
-                echo "kiosk-launch: using XWayland auth file: ${_xauth_cand}" >&2
-                break
-            fi
-        done
+        _xauth_rt="${XDG_RUNTIME_DIR:-}"
+        # XDG_RUNTIME_DIR is always set in GNOME systemd user services; the
+        # fallback constructs the standard path only after validating the UID
+        # is numeric to prevent unexpected command-substitution results.
+        if [[ -z "${_xauth_rt}" ]]; then
+            _xauth_uid="$(id -u 2>/dev/null || true)"
+            [[ "${_xauth_uid}" =~ ^[0-9]+$ ]] && _xauth_rt="/run/user/${_xauth_uid}"
+        fi
+        _xauth_cand=""
+        if [[ -n "${_xauth_rt}" ]]; then
+            # Select the most recently modified Mutter XWayland auth file;
+            # sort by mtime so any stale copies from a crash are skipped.
+            _xauth_cand="$(find "${_xauth_rt}" -maxdepth 1 \
+                -name '.mutter-Xwaylandauth.*' -printf '%T@\t%p\n' 2>/dev/null \
+                | sort -rn | head -1 | cut -f2)"
+        fi
+        [[ -z "${_xauth_cand}" ]] && _xauth_cand="${HOME}/.Xauthority"
+        if [[ -f "${_xauth_cand}" ]]; then
+            export XAUTHORITY="${_xauth_cand}"
+            echo "kiosk-launch: using XWayland auth file: ${_xauth_cand}" >&2
+        fi
     fi
     _FF_USING_XWAYLAND=true
     echo "kiosk-launch: launching snap Firefox on XWayland (DISPLAY=${DISPLAY:-:0})" >&2
