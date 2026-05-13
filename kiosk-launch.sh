@@ -342,12 +342,21 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # snap Firefox on Wayland → force XWayland so xdotool/wmctrl can manage
     # the window and --kiosk focus is granted without an activation token.
     #
-    # Two mechanisms are combined to ensure Firefox uses X11/XWayland:
+    # IMPORTANT – snap Wayland interface:
+    # snap-confine's 'wayland' interface plug mounts the host Wayland socket
+    # ($XDG_RUNTIME_DIR/wayland-0) *inside* the snap namespace and re-injects
+    # WAYLAND_DISPLAY there.  This happens inside snap-confine regardless of
+    # what the host environment contains, so env -u WAYLAND_DISPLAY alone does
+    # not prevent Firefox from connecting to Wayland.
+    #
+    # The definitive fix is 'sudo snap disconnect firefox:wayland' (run by
+    # install.sh).  Without that step the mechanisms below are insufficient.
+    #
+    # Additional mechanisms that reinforce the disconnection:
     #
     # 1. env -u WAYLAND_DISPLAY – removes WAYLAND_DISPLAY from the subprocess
-    #    environment.  Firefox's auto-detection falls back to X11 when
-    #    WAYLAND_DISPLAY is absent, regardless of Firefox version.  This is
-    #    necessary because Firefox 131+ silently ignores MOZ_ENABLE_WAYLAND=0.
+    #    environment.  Useful if the plug is disconnected and as a belt-and-
+    #    suspenders measure for future snap versions.
     #
     # 2. MOZ_ENABLE_WAYLAND=0 – kept for Firefox versions prior to 131 that
     #    still honour the variable.

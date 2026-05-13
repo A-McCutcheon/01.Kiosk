@@ -152,6 +152,27 @@ else
 fi
 echo ""
 
+# ── snap Firefox Wayland interface ────────────────────────────────────────
+echo "── snap Firefox Wayland interface ────────────────────────────────────"
+if "${_diag_ff_is_snap}" && command -v snap &>/dev/null; then
+    # snap-confine's 'wayland' interface plug mounts the host Wayland socket
+    # inside the snap namespace and re-injects WAYLAND_DISPLAY, bypassing
+    # 'env -u WAYLAND_DISPLAY'.  It must be disconnected so Firefox falls back
+    # to X11/XWayland where xdotool/wmctrl can manage its window.
+    _wl_state="$(snap connections firefox 2>/dev/null \
+        | awk '$1 == "wayland" { print $3 }' || true)"
+    if [[ "${_wl_state}" == "-" ]]; then
+        _ok  "snap Firefox wayland plug disconnected (XWayland mode enforced)"
+    else
+        _fail "snap Firefox wayland plug is connected (Firefox will open on Wayland and remain invisible)"
+        echo "     → Re-run: sudo ./install.sh"
+        echo "     → Or manually: sudo snap disconnect firefox:wayland"
+    fi
+else
+    echo "  ℹ  snap Firefox not detected – Wayland plug check skipped."
+fi
+echo ""
+
 # ── Installed script freshness ────────────────────────────────────────────
 echo "── Installed script freshness ────────────────────────────────────────"
 INSTALLED_LAUNCH="/opt/kiosk/kiosk-launch.sh"
@@ -184,8 +205,11 @@ elif ! grep -q '_WAYLAND_SESSION' /opt/kiosk/kiosk-exit-overlay.py 2>/dev/null; 
 elif ! grep -q 'XWayland probe' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing XWayland wake-up probe and double-launch fix)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'snap Wayland interface' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing snap Wayland interface disconnect note)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (Wayland-native launch, kiosk profile, lock cleanup, snap fix, snap XWayland, FF131+, XWayland probe)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (Wayland-native launch, kiosk profile, lock cleanup, snap fix, snap XWayland, FF131+, XWayland probe, snap wayland disconnect)"
 fi
 echo ""
 
