@@ -75,7 +75,7 @@ echo "      Done."
 # namespace so Firefox falls back to X11/XWayland, where xdotool and wmctrl
 # can manage the window normally.  'snap disconnect' is persistent across
 # reboots and snap refreshes.
-if command -v snap &>/dev/null && snap list firefox &>/dev/null 2>&1; then
+if command -v snap &>/dev/null && snap list firefox &>/dev/null; then
     _wl_state="$(snap connections firefox 2>/dev/null \
         | awk '$1 == "wayland" { print $3 }' || true)"
     if [[ "${_wl_state}" == "-" ]]; then
