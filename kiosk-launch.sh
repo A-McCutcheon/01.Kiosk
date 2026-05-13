@@ -319,17 +319,41 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # snap Firefox on Wayland → force XWayland so xdotool/wmctrl can manage
     # the window and --kiosk focus is granted without an activation token.
     #
-    # NOTE: GDK_BACKEND=x11 is intentionally NOT set here.  Firefox manages
-    # its own Wayland/X11 backend selection independently of GTK; GDK_BACKEND
-    # affects GTK's backend (used only by bundled dialogs) and can cause the
-    # GTK x11 backend to fail inside the snap sandbox, crashing Firefox before
-    # it opens any window.  MOZ_ENABLE_WAYLAND=0 is the correct and sufficient
-    # variable to force Firefox's own X11 (XWayland) backend.
+    # Two mechanisms are combined to ensure Firefox uses X11/XWayland:
     #
-    # DISPLAY is set explicitly so Firefox can open the XWayland socket even
-    # when DISPLAY is absent from the systemd user-service environment.
+    # 1. env -u WAYLAND_DISPLAY – removes WAYLAND_DISPLAY from the subprocess
+    #    environment.  Firefox's auto-detection falls back to X11 when
+    #    WAYLAND_DISPLAY is absent, regardless of Firefox version.  This is
+    #    necessary because Firefox 131+ silently ignores MOZ_ENABLE_WAYLAND=0.
+    #
+    # 2. MOZ_ENABLE_WAYLAND=0 – kept for Firefox versions prior to 131 that
+    #    still honour the variable.
+    #
+    # NOTE: GDK_BACKEND=x11 is intentionally NOT set.  Firefox manages its own
+    # Wayland/X11 backend independently of GTK; GDK_BACKEND targets only GTK
+    # dialogs and crashes inside the snap sandbox before any window opens.
+    #
+    # XAUTHORITY: in a systemd user service XAUTHORITY may not be propagated
+    # from the GNOME session.  Without it Firefox cannot authenticate with the
+    # XWayland server and silently falls back to the Wayland backend.  Probe
+    # Mutter's XWayland auth file (written to $XDG_RUNTIME_DIR on every boot)
+    # and export it before launching so Firefox always gets a valid credential.
+    if [[ -z "${XAUTHORITY:-}" ]]; then
+        _xauth_rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+        for _xauth_cand in "${_xauth_rt}"/.mutter-Xwaylandauth.* \
+                            "${HOME}/.Xauthority"; do
+            if [[ -f "${_xauth_cand}" ]]; then
+                export XAUTHORITY="${_xauth_cand}"
+                echo "kiosk-launch: using XWayland auth file: ${_xauth_cand}" >&2
+                break
+            fi
+        done
+    fi
     _FF_USING_XWAYLAND=true
-    DISPLAY="${DISPLAY:-:0}" MOZ_ENABLE_WAYLAND=0 MOZ_WEBRENDER=0 "${BROWSER}" \
+    echo "kiosk-launch: launching snap Firefox on XWayland (DISPLAY=${DISPLAY:-:0})" >&2
+    env -u WAYLAND_DISPLAY \
+        DISPLAY="${DISPLAY:-:0}" MOZ_ENABLE_WAYLAND=0 MOZ_WEBRENDER=0 \
+        "${BROWSER}" \
         --kiosk \
         -no-remote \
         -profile "${_FF_PROFILE_DIR}" \
