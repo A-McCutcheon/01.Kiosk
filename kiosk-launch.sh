@@ -334,12 +334,12 @@ EOF
 #   -no-remote – always start a fresh process; never reuse an existing
 #               instance that might not be in kiosk mode.
 _LAUNCH_SESSION_LC="$(printf '%s' "${XDG_SESSION_TYPE:-}" | tr '[:upper:]' '[:lower:]')"
-# _FF_USING_XWAYLAND: kept false for snap Firefox on Wayland.  Although we
-# send env -u WAYLAND_DISPLAY / MOZ_ENABLE_WAYLAND=0, snap-confine's 'desktop'
-# interface plug re-injects WAYLAND_DISPLAY inside the snap namespace so Firefox
-# always runs as a native Wayland client regardless.  We therefore use the
-# Wayland activation path (3-retry poll + XDG activation token) rather than the
-# 30-retry X11 poll which can never find a Wayland-native window in time.
+# _FF_USING_XWAYLAND: snap Firefox on Wayland always runs as a native Wayland
+# client.  snap-confine's 'desktop' interface plug provides the Wayland socket
+# ($XDG_RUNTIME_DIR/wayland-0) inside the snap namespace regardless of what the
+# outer environment contains, so Firefox always auto-detects and uses Wayland.
+# We therefore use the Wayland activation path (3-retry poll + XDG token) rather
+# than the 30-retry X11 poll which can never find a Wayland-native window.
 _FF_USING_XWAYLAND=false
 
 # ── XDG activation token (GNOME 46+ focus grant) ─────────────────────────────
@@ -362,8 +362,8 @@ if [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]] && command -v gdbus &>/dev/null; t
     _XDG_TOKEN=$(gdbus call --session \
         --dest org.freedesktop.portal.Desktop \
         --object-path /org/freedesktop/portal/desktop \
-        --method org.freedesktop.portal.Activation.RequestToken \
-        "{'reason': <'Kiosk browser launch'>}" 2>/dev/null \
+        --method org.freedesktop.portal.Activation.CreateActivationToken \
+        '' '{}' 2>/dev/null \
         | sed -n "s/.*'\\([^']*\\)'.*/\\1/p" | head -1 || true)
     echo "kiosk-launch: XDG activation token: ${_XDG_TOKEN:-<none -- portal unavailable>}" >&2
 fi
@@ -371,23 +371,23 @@ fi
 if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # snap Firefox on a Wayland session.
     #
-    # IMPORTANT – snap Wayland interface:
-    # snap-confine's 'wayland' interface plug mounts the host Wayland socket
-    # ($XDG_RUNTIME_DIR/wayland-0) *inside* the snap namespace and re-injects
-    # WAYLAND_DISPLAY there.  This happens inside snap-confine regardless of
-    # what the host environment contains, so env -u WAYLAND_DISPLAY alone does
-    # not prevent Firefox from connecting to Wayland.
+    # snap Firefox ALWAYS runs as a native Wayland client: snap-confine's
+    # 'desktop' interface plug provides the host Wayland socket
+    # ($XDG_RUNTIME_DIR/wayland-0) inside the snap namespace even after
+    # 'snap disconnect firefox:wayland'.  env -u WAYLAND_DISPLAY and
+    # MOZ_ENABLE_WAYLAND=0 are therefore ineffective – Firefox 131+ ignores
+    # MOZ_ENABLE_WAYLAND=0 and auto-detects Wayland from the injected socket.
     #
-    # Even after 'sudo snap disconnect firefox:wayland' (run by install.sh), the
-    # snap 'desktop' interface continues to provide the Wayland socket, so snap
-    # Firefox ALWAYS runs as a native Wayland client.  We therefore:
-    #   a) Pass XDG_ACTIVATION_TOKEN (obtained above) so GNOME Shell immediately
-    #      grants fullscreen focus to Firefox's Wayland window.
-    #   b) Keep env -u WAYLAND_DISPLAY / MOZ_ENABLE_WAYLAND=0 as belt-and-
-    #      suspenders for hypothetical snap builds that fully honour the wayland
-    #      disconnect (these flags do no harm when the desktop plug re-injects).
-    #   c) Set _FF_USING_XWAYLAND=false so the activation subshell uses the
-    #      fast 3-retry Wayland poll rather than the 30-retry X11 poll.
+    # IMPORTANT: do NOT pass conflicting X11 hints (DISPLAY=:0) alongside the
+    # snap-injected WAYLAND_DISPLAY.  Firefox 131+ prefers Wayland for display
+    # but still initialises the X11 backend when DISPLAY is explicitly set; on
+    # some configurations this conflicting dual-backend initialisation causes
+    # Firefox to crash at startup with exit status 1.
+    #
+    # Correct approach: launch Firefox as a pure Wayland client with no X11
+    # env overrides.  Pass XDG_ACTIVATION_TOKEN (obtained via the portal's
+    # CreateActivationToken) so GNOME Shell immediately grants fullscreen focus
+    # without focus-stealing prevention blocking the kiosk window.
     #
     # NOTE: GDK_BACKEND=x11 is intentionally NOT set.  Firefox manages its own
     # Wayland/X11 backend independently of GTK; GDK_BACKEND targets only GTK
@@ -422,10 +422,8 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # Export XDG_ACTIVATION_TOKEN so the forked Firefox subprocess inherits it.
     # An empty token is harmless – Firefox treats it as "no token provided".
     export XDG_ACTIVATION_TOKEN="${_XDG_TOKEN}"
-    echo "kiosk-launch: launching snap Firefox (Wayland-native via desktop plug, XDG token: ${_XDG_TOKEN:-none})" >&2
-    env -u WAYLAND_DISPLAY \
-        DISPLAY="${DISPLAY:-:0}" MOZ_ENABLE_WAYLAND=0 MOZ_WEBRENDER=0 \
-        "${BROWSER}" \
+    echo "kiosk-launch: launching snap Firefox (Wayland-native, XDG token: ${_XDG_TOKEN:-none})" >&2
+    "${BROWSER}" \
         --kiosk \
         -no-remote \
         -profile "${_FF_PROFILE_DIR}" \
@@ -450,6 +448,7 @@ else
         "${URL}" 9>&- &
 fi
 FIREFOX_PID=$!
+_ff_launch_time=$(date +%s)
 echo "kiosk-launch: Firefox launched PID=${FIREFOX_PID} XAUTHORITY=${XAUTHORITY:-<unset>} DISPLAY=${DISPLAY:-<unset>} SESSION=${XDG_SESSION_TYPE:-<unset>}" >&2
 
 # ── Post-launch: wait for Firefox window and activate it ─────────────────
@@ -744,6 +743,11 @@ trap '_cleanup_overlay' EXIT
 _ff_exit=0
 wait "${FIREFOX_PID}" || _ff_exit=$?
 echo "kiosk-launch: Firefox (PID ${FIREFOX_PID}) exited with status ${_ff_exit}" >&2
+_ff_run_secs=$(( $(date +%s) - ${_ff_launch_time:-0} ))
+if [[ ${_ff_exit} -ne 0 ]] && [[ ${_ff_run_secs} -lt 10 ]]; then
+    echo "kiosk-launch: WARNING Firefox crashed at startup (ran ${_ff_run_secs}s, status ${_ff_exit})" >&2
+    echo "kiosk-launch: check Firefox errors with: journalctl -b _COMM=firefox" >&2
+fi
 
 # ── When the browser exits, reopen the config app ─────────────────────────
 # Release the single-instance lock first so the new kiosk-launch.sh that

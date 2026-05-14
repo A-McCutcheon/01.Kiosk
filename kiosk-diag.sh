@@ -217,8 +217,11 @@ elif ! grep -q 'Firefox liveness' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q 'XDG_ACTIVATION_TOKEN' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing XDG activation token for GNOME 46 focus grant)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'CreateActivationToken' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (XDG token uses wrong portal method -- Firefox startup crash and no focus)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, FF131+, snap fix, Wayland-native fallback, liveness probe, XDG token)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal, liveness probe)"
 fi
 echo ""
 
@@ -239,8 +242,8 @@ if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
             2>/dev/null \
             | grep -q 'XDG activation token:' && echo true || echo false)
     fi
-    if grep -q 'XDG_ACTIVATION_TOKEN' "${INSTALLED_LAUNCH}" 2>/dev/null; then
-        # Installed script has the XDG token feature; check if it has actually run.
+    if grep -q 'CreateActivationToken' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+        # Installed script has the correct XDG portal method; check if it has run.
         if "${_new_code_running}"; then
             _ok  "kiosk-browser.service is running the current installed script"
         else
@@ -276,6 +279,27 @@ if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
             _UID="${KIOSK_UID}" _SYSTEMD_USER_UNIT="kiosk-browser.service" \
             2>/dev/null | tail -50 | sed 's/^/  /' \
             || echo "  (Could not read kiosk-browser journal -- run as root or as '${KIOSK_USER}')"
+    fi
+else
+    echo "  journalctl not available or kiosk user not found"
+fi
+echo ""
+
+# ── Firefox process journal ────────────────────────────────────────────────
+# Firefox logs its own startup errors under a separate journald identifier
+# (_COMM=firefox), distinct from the kiosk-browser.service entries above.
+# These entries are essential for diagnosing exit-status-1 startup crashes.
+echo "── Firefox process journal (last 20 lines) ──────────────────────────"
+if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
+    KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
+    if [[ -n "${KIOSK_UID}" ]]; then
+        _ff_log=$(journalctl --boot --no-pager _UID="${KIOSK_UID}" _COMM=firefox \
+            2>/dev/null | tail -20)
+        if [[ -n "${_ff_log}" ]]; then
+            echo "${_ff_log}" | sed 's/^/  /'
+        else
+            echo "  (no Firefox journal entries this boot)"
+        fi
     fi
 else
     echo "  journalctl not available or kiosk user not found"
