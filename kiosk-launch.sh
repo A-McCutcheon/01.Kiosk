@@ -354,12 +354,14 @@ _FF_USING_XWAYLAND=false
 # the Wayland client consumes the token when it creates its first surface and
 # receives unconditional focus from the compositor.
 #
-# If the portal call fails (older system, non-GNOME session, or portal not
-# running) the variable is left empty and Firefox falls back to the existing
-# wmctrl/gdbus activation fallbacks in the subshell below.
+# If the portal call fails (older system, non-GNOME session, portal not
+# running, or portal unresponsive) the variable is left empty and Firefox
+# falls back to the existing wmctrl/gdbus activation fallbacks in the
+# subshell below.  A 3-second timeout prevents the script from hanging
+# indefinitely when xdg-desktop-portal is slow to start or is not present.
 _XDG_TOKEN=""
 if [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]] && command -v gdbus &>/dev/null; then
-    _XDG_TOKEN=$(gdbus call --session \
+    _XDG_TOKEN=$(timeout 3 gdbus call --session \
         --dest org.freedesktop.portal.Desktop \
         --object-path /org/freedesktop/portal/desktop \
         --method org.freedesktop.portal.Activation.RequestToken \

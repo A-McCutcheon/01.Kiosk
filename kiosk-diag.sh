@@ -220,8 +220,11 @@ elif ! grep -q 'XDG_ACTIVATION_TOKEN' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q 'RequestToken' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (XDG token uses wrong portal method: Firefox window invisible due to GNOME 46 focus-stealing prevention)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'timeout 3.*gdbus' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing timeout on gdbus portal call: script hangs when xdg-desktop-portal is unresponsive, Firefox never launches)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken, liveness probe)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, liveness probe)"
 fi
 echo ""
 
