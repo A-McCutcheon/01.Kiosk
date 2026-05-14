@@ -246,11 +246,12 @@ elif ! grep -q 'env -u WAYLAND_DISPLAY' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     echo "     when the wayland plug is disconnected.  Firefox 131+ crashes (exit 1) when both"
     echo "     WAYLAND_DISPLAY and DISPLAY=:0 are present.  WAYLAND_DISPLAY must be stripped."
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
-elif ! grep -q 'xauth.*extract.*DISPLAY' "${INSTALLED_LAUNCH}" 2>/dev/null; then
-    _fail "${INSTALLED_LAUNCH} is outdated (missing snap XAUTHORITY merge: Firefox reports 'cannot open display :0' because /run/user/UID/.mutter-Xwaylandauth.* is inaccessible inside the snap sandbox)"
+elif ! grep -q '_mm_src' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (xauth extract-by-display is a silent no-op: Mutter stores cookies as 'hostname/unix:0', not ':0'; must merge ALL entries via xauth merge)"
+    echo "     Also: merge is skipped on restart when XAUTHORITY is already ~/.Xauthority."
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check, env -u WAYLAND_DISPLAY XWayland launch, snap XWayland Xauthority merge)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check, env -u WAYLAND_DISPLAY XWayland launch, snap XWayland full Xauth merge)"
 fi
 echo ""
 

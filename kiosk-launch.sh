@@ -482,14 +482,36 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
         # Fix: merge the cookie for $DISPLAY into $HOME/.Xauthority (always
         # accessible via snap's 'home' interface) and update XAUTHORITY so the
         # snap launcher passes the correct path into the sandbox.
-        if [[ -n "${XAUTHORITY:-}" ]] \
-                && [[ "${XAUTHORITY}" != "${HOME}/.Xauthority" ]] \
-                && [[ -f "${XAUTHORITY}" ]] \
-                && command -v xauth &>/dev/null; then
-            xauth -f "${XAUTHORITY}" extract - "${DISPLAY:-:0}" 2>/dev/null \
-                | xauth -f "${HOME}/.Xauthority" merge - 2>/dev/null || true
-            export XAUTHORITY="${HOME}/.Xauthority"
-            echo "kiosk-launch: snap XWayland: Xauthority merged to ${HOME}/.Xauthority" >&2
+        if command -v xauth &>/dev/null; then
+            # Find the live Mutter XWayland auth file.  When XAUTHORITY is
+            # already ~/.Xauthority (GNOME session default or leftover from a
+            # previous launch), look up the mutter file directly so we always
+            # merge a fresh cookie.  Merge ALL entries – not just the entry for
+            # ${DISPLAY} – because Mutter stores cookies as "hostname/unix:0"
+            # which does not match the ":0" extract key, causing a silent no-op.
+            _mm_src="${XAUTHORITY:-}"
+            if [[ "${_mm_src}" == "${HOME}/.Xauthority" ]] \
+                    || [[ -z "${_mm_src}" ]]; then
+                _mm_rt="${XDG_RUNTIME_DIR:-}"
+                if [[ -z "${_mm_rt}" ]]; then
+                    _mm_uid="$(id -u 2>/dev/null || true)"
+                    [[ -n "${_mm_uid}" ]] && [[ "${_mm_uid}" =~ ^[0-9]+$ ]] \
+                        && _mm_rt="/run/user/${_mm_uid}" || true
+                fi
+                if [[ -n "${_mm_rt}" ]]; then
+                    _mm_src="$(find "${_mm_rt}" -maxdepth 1 -type f \
+                        -name '.mutter-Xwaylandauth.*' -printf '%T@\t%p\n' \
+                        2>/dev/null \
+                        | sort -rn | head -1 | cut -f2 || true)"
+                fi
+            fi
+            if [[ -n "${_mm_src}" ]] \
+                    && [[ "${_mm_src}" != "${HOME}/.Xauthority" ]] \
+                    && [[ -f "${_mm_src}" ]]; then
+                xauth -f "${HOME}/.Xauthority" merge "${_mm_src}" 2>/dev/null || true
+                export XAUTHORITY="${HOME}/.Xauthority"
+                echo "kiosk-launch: snap XWayland: Xauthority merged to ${HOME}/.Xauthority" >&2
+            fi
         fi
         echo "kiosk-launch: launching snap Firefox (XWayland, XDG token: ${_XDG_TOKEN:-none})" >&2
         env -u WAYLAND_DISPLAY "${BROWSER}" \
