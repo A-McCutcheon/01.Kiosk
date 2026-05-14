@@ -205,8 +205,8 @@ elif ! grep -q '_WAYLAND_SESSION' /opt/kiosk/kiosk-exit-overlay.py 2>/dev/null; 
 elif ! grep -q 'XWayland probe' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing XWayland wake-up probe and double-launch fix)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
-elif ! grep -q 'snap Wayland interface' "${INSTALLED_LAUNCH}" 2>/dev/null; then
-    _fail "${INSTALLED_LAUNCH} is outdated (missing snap Wayland interface disconnect note)"
+elif ! grep -q 'snap disconnect firefox:wayland' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing snap Wayland disconnect note)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 elif ! grep -q 'wmctrl -xa firefox' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing Wayland-native Firefox activation fallback)"
@@ -217,11 +217,11 @@ elif ! grep -q 'Firefox liveness' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q 'XDG_ACTIVATION_TOKEN' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing XDG activation token for GNOME 46 focus grant)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
-elif ! grep -q 'CreateActivationToken' "${INSTALLED_LAUNCH}" 2>/dev/null; then
-    _fail "${INSTALLED_LAUNCH} is outdated (XDG token uses wrong portal method: Firefox startup crash and no focus)"
+elif ! grep -q 'RequestToken' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (XDG token uses wrong portal method: Firefox window invisible due to GNOME 46 focus-stealing prevention)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal, liveness probe)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken, liveness probe)"
 fi
 echo ""
 
@@ -242,7 +242,7 @@ if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
             2>/dev/null \
             | grep -q 'XDG activation token:' && echo true || echo false)
     fi
-    if grep -q 'CreateActivationToken' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    if grep -q 'RequestToken' "${INSTALLED_LAUNCH}" 2>/dev/null; then
         # Installed script has the correct XDG portal method; check if it has run.
         if "${_new_code_running}"; then
             _ok  "kiosk-browser.service is running the current installed script"

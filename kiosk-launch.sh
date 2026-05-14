@@ -362,7 +362,7 @@ if [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]] && command -v gdbus &>/dev/null; t
     _XDG_TOKEN=$(gdbus call --session \
         --dest org.freedesktop.portal.Desktop \
         --object-path /org/freedesktop/portal/desktop \
-        --method org.freedesktop.portal.Activation.CreateActivationToken \
+        --method org.freedesktop.portal.Activation.RequestToken \
         '' '{}' 2>/dev/null \
         | sed -n "s/.*'\\([^']*\\)'.*/\\1/p" | head -1 || true)
     echo "kiosk-launch: XDG activation token: ${_XDG_TOKEN:-<none -- portal unavailable>}" >&2
@@ -386,7 +386,7 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     #
     # Correct approach: launch Firefox as a pure Wayland client with no X11
     # env overrides.  Pass XDG_ACTIVATION_TOKEN (obtained via the portal's
-    # CreateActivationToken) so GNOME Shell immediately grants fullscreen focus
+    # RequestToken) so GNOME Shell immediately grants fullscreen focus
     # without focus-stealing prevention blocking the kiosk window.
     #
     # NOTE: GDK_BACKEND=x11 is intentionally NOT set.  Firefox manages its own
