@@ -218,7 +218,7 @@ elif ! grep -q 'XDG_ACTIVATION_TOKEN' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing XDG activation token for GNOME 46 focus grant)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 elif ! grep -q 'CreateActivationToken' "${INSTALLED_LAUNCH}" 2>/dev/null; then
-    _fail "${INSTALLED_LAUNCH} is outdated (XDG token uses wrong portal method -- Firefox startup crash and no focus)"
+    _fail "${INSTALLED_LAUNCH} is outdated (XDG token uses wrong portal method: Firefox startup crash and no focus)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
     _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal, liveness probe)"

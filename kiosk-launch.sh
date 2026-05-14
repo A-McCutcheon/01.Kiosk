@@ -743,7 +743,7 @@ trap '_cleanup_overlay' EXIT
 _ff_exit=0
 wait "${FIREFOX_PID}" || _ff_exit=$?
 echo "kiosk-launch: Firefox (PID ${FIREFOX_PID}) exited with status ${_ff_exit}" >&2
-_ff_run_secs=$(( $(date +%s) - ${_ff_launch_time:-0} ))
+_ff_run_secs=$(( $(date +%s) - _ff_launch_time ))
 if [[ ${_ff_exit} -ne 0 ]] && [[ ${_ff_run_secs} -lt 10 ]]; then
     echo "kiosk-launch: WARNING Firefox crashed at startup (ran ${_ff_run_secs}s, status ${_ff_exit})" >&2
     echo "kiosk-launch: check Firefox errors with: journalctl -b _COMM=firefox" >&2
