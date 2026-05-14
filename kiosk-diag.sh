@@ -240,8 +240,14 @@ elif ! grep -q '_ff_wayland_slot' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     echo "     Without it the activation subshell uses 3-retry Wayland poll even when snap"
     echo "     Firefox is on XWayland, so the Firefox window is never found and never appears."
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'env -u WAYLAND_DISPLAY' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing env -u WAYLAND_DISPLAY on XWayland launch path)"
+    echo "     snap's 'desktop' interface exposes WAYLAND_DISPLAY inside the snap namespace even"
+    echo "     when the wayland plug is disconnected.  Firefox 131+ crashes (exit 1) when both"
+    echo "     WAYLAND_DISPLAY and DISPLAY=:0 are present.  WAYLAND_DISPLAY must be stripped."
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check, env -u WAYLAND_DISPLAY XWayland launch)"
 fi
 echo ""
 

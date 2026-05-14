@@ -466,16 +466,28 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # An empty token is harmless – Firefox treats it as "no token provided".
     export XDG_ACTIVATION_TOKEN="${_XDG_TOKEN}"
     if "${_FF_USING_XWAYLAND}"; then
-        _ff_launch_mode="XWayland"
+        # XWayland path: snap-confine's 'desktop' interface still exposes
+        # WAYLAND_DISPLAY inside the snap namespace even when the 'wayland'
+        # plug is disconnected.  Firefox 131+ (which ignores MOZ_ENABLE_WAYLAND=0)
+        # will attempt to use Wayland when WAYLAND_DISPLAY is set, and crashes
+        # with exit status 1 when both WAYLAND_DISPLAY and DISPLAY=:0 are
+        # present simultaneously.  Strip WAYLAND_DISPLAY from the process
+        # environment before exec so snap-confine sees it as absent and Firefox
+        # auto-detects X11/XWayland via DISPLAY only.
+        echo "kiosk-launch: launching snap Firefox (XWayland, XDG token: ${_XDG_TOKEN:-none})" >&2
+        env -u WAYLAND_DISPLAY "${BROWSER}" \
+            --kiosk \
+            -no-remote \
+            -profile "${_FF_PROFILE_DIR}" \
+            "${URL}" 9>&- &
     else
-        _ff_launch_mode="Wayland-native"
+        echo "kiosk-launch: launching snap Firefox (Wayland-native, XDG token: ${_XDG_TOKEN:-none})" >&2
+        "${BROWSER}" \
+            --kiosk \
+            -no-remote \
+            -profile "${_FF_PROFILE_DIR}" \
+            "${URL}" 9>&- &
     fi
-    echo "kiosk-launch: launching snap Firefox (${_ff_launch_mode}, XDG token: ${_XDG_TOKEN:-none})" >&2
-    "${BROWSER}" \
-        --kiosk \
-        -no-remote \
-        -profile "${_FF_PROFILE_DIR}" \
-        "${URL}" 9>&- &
     unset XDG_ACTIVATION_TOKEN  # consumed by Firefox; do not leak to other children
 elif [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # apt (non-snap) Firefox on a Wayland session → native Wayland back-end.
