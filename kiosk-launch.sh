@@ -450,9 +450,13 @@ echo "kiosk-launch: Firefox launched PID=${FIREFOX_PID} XAUTHORITY=${XAUTHORITY:
     _IS_WAYLAND=false
     [[ "${_SESSION_TYPE_LC}" == "wayland" ]] && _IS_WAYLAND=true
 
-    # When snap Firefox was forced onto XWayland, treat the window as X11 for
-    # all activation logic: use the full 30-retry X11 poll (not the 3-retry
-    # Wayland shortcut) and skip the Wayland-only GNOME Shell Eval fallback.
+    # When snap Firefox was forced onto XWayland, use the full 30-retry X11
+    # poll (not the 3-retry Wayland shortcut) by clearing _IS_WAYLAND.
+    # NOTE: the snap 'desktop' interface may still inject WAYLAND_DISPLAY
+    # inside the snap namespace even after 'snap disconnect firefox:wayland',
+    # causing Firefox to use Wayland regardless.  If the X11 poll finds no
+    # window we therefore fall through to the Wayland activation block below
+    # (its condition also checks _FF_USING_XWAYLAND).
     if "${_FF_USING_XWAYLAND:-false}"; then
         _IS_WAYLAND=false
     fi
@@ -500,12 +504,16 @@ echo "kiosk-launch: Firefox launched PID=${FIREFOX_PID} XAUTHORITY=${XAUTHORITY:
     done
     echo "kiosk-launch: xdotool search complete: WIN_ID=${_WIN_ID:-<none>} IS_WAYLAND=${_IS_WAYLAND} XAUTHORITY=${_XAUTH:-<unset>}" >&2
 
-    if [[ -z "${_WIN_ID}" ]] && "${_IS_WAYLAND}"; then
-        echo "kiosk-launch: no X11 Firefox window detected on Wayland; trying Wayland-compatible activation" >&2
-        # On Wayland we only polled for an X11 window for 3 s; Firefox's Wayland
-        # surface may not be registered with GNOME Shell yet.  Wait before
-        # attempting activation so we don't activate a not-yet-mapped window.
-        sleep "${_WAYLAND_SURFACE_DELAY}"
+    if [[ -z "${_WIN_ID}" ]] && ( "${_IS_WAYLAND}" || "${_FF_USING_XWAYLAND:-false}" ); then
+        echo "kiosk-launch: no X11 Firefox window; trying Wayland-compatible activation" >&2
+        # When using the native-Wayland path (3-retry poll), Firefox's Wayland
+        # surface may not yet be registered with GNOME Shell – wait before
+        # activating to avoid targeting a not-yet-mapped window.
+        # In the forced-XWayland path (_FF_USING_XWAYLAND) we already waited
+        # 30 s, so the surface-settle delay is not needed.
+        if ! "${_FF_USING_XWAYLAND:-false}"; then
+            sleep "${_WAYLAND_SURFACE_DELAY}"
+        fi
         # GNOME Shell Eval (works on GNOME < 41; silently rejected on GNOME 41+
         # without unsafe-mode – safe to attempt regardless).
         if command -v gdbus &>/dev/null; then
@@ -616,10 +624,14 @@ echo "kiosk-launch: Firefox launched PID=${FIREFOX_PID} XAUTHORITY=${XAUTHORITY:
         echo "kiosk-launch: window-ID search failed; activating by class name via wmctrl" >&2
         for _try in $(seq 1 "${_ACTIVATION_RETRIES}"); do
             DISPLAY="${_DISP}" wmctrl -xa Firefox   2>/dev/null || \
-            DISPLAY="${_DISP}" wmctrl -xa Navigator 2>/dev/null || true
-            # Check whether any Firefox/Navigator window is now the active one.
+            DISPLAY="${_DISP}" wmctrl -xa Navigator 2>/dev/null || \
+            DISPLAY="${_DISP}" wmctrl -xa firefox   2>/dev/null || true
+            # Check whether any Firefox window is now the active one.
+            # WM_CLASS varies by session type: "Firefox" (apt/X11),
+            # "Navigator" (apt/X11 instance), "firefox" (snap/Wayland-native).
             _ACTIVE_CLASS=$(DISPLAY="${_DISP}" xdotool getactivewindow getwindowclassname 2>/dev/null || true)
-            [[ "${_ACTIVE_CLASS}" == "Firefox" || "${_ACTIVE_CLASS}" == "Navigator" ]] && break
+            [[ "${_ACTIVE_CLASS}" == "Firefox" || "${_ACTIVE_CLASS}" == "Navigator" || \
+               "${_ACTIVE_CLASS}" == "firefox" ]] && break
             sleep "${_RETRY_DELAY}"
         done
         exit 0

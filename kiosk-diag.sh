@@ -208,8 +208,11 @@ elif ! grep -q 'XWayland probe' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q 'snap Wayland interface' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing snap Wayland interface disconnect note)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'wmctrl -xa firefox' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing Wayland-native Firefox activation fallback)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, FF131+, snap fix)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, FF131+, snap fix, Wayland-native fallback)"
 fi
 echo ""
 
