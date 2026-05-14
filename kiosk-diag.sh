@@ -229,8 +229,14 @@ elif ! grep -q '_xauth_cand.*\]\] ||' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q 'cut -f2 || true' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (find|sort|head pipeline aborts under set -o pipefail -- SIGPIPE from sort when 2+ Xwayland auth files exist, or find exits non-zero)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'ERR exit at line' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing ERR trap for set-e crash diagnostics -- cannot determine where script aborts)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'post-XDG-token state' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing post-XDG-token diagnostic log -- cannot distinguish launch branch from journal)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap)"
 fi
 echo ""
 
@@ -238,7 +244,7 @@ echo ""
 # After install.sh copies new scripts, the running kiosk-browser.service
 # continues to use the old in-memory code until the machine reboots.
 # Check the journal: if it contains a startup log line produced only by the
-# new code ("XDG activation token:"), the current code is running.  If the
+# new code ("post-XDG-token state:"), the current code is running.  If the
 # freshness check passed but the journal doesn't have the new log line, the
 # service was not restarted after the last install.
 echo "── Service restart check ─────────────────────────────────────────────"
@@ -249,10 +255,10 @@ if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
         _new_code_running=$(journalctl --boot --no-pager \
             _UID="${KIOSK_UID}" _SYSTEMD_USER_UNIT="kiosk-browser.service" \
             2>/dev/null \
-            | grep -q 'XDG activation token:' && echo true || echo false)
+            | grep -q 'post-XDG-token state:' && echo true || echo false)
     fi
-    if grep -q 'RequestToken' "${INSTALLED_LAUNCH}" 2>/dev/null; then
-        # Installed script has the correct XDG portal method; check if it has run.
+    if grep -q 'post-XDG-token state' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+        # Installed script has the ERR-trap + post-XDG diagnostic; check if it has run.
         if "${_new_code_running}"; then
             _ok  "kiosk-browser.service is running the current installed script"
         else
@@ -280,13 +286,16 @@ echo ""
 # ── Kiosk browser service journal ─────────────────────────────────────────
 # Run as the kiosk user so journalctl can access the user service journal.
 # When collected via SSH, su -c lets a root/admin user retrieve these logs.
-echo "── Kiosk browser service journal (last 50 lines) ────────────────────"
+# Use --boot (not --since "1 hour ago") so that all log entries from the
+# current boot session are visible — the service may have started at login
+# time (potentially hours ago) and --since truncates those early entries.
+echo "── Kiosk browser service journal (last 100 lines, this boot) ────────"
 if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
     if [[ -n "${KIOSK_UID}" ]]; then
-        journalctl --since "1 hour ago" --no-pager \
+        journalctl --boot --no-pager \
             _UID="${KIOSK_UID}" _SYSTEMD_USER_UNIT="kiosk-browser.service" \
-            2>/dev/null | tail -50 | sed 's/^/  /' \
+            2>/dev/null | tail -100 | sed 's/^/  /' \
             || echo "  (Could not read kiosk-browser journal -- run as root or as '${KIOSK_USER}')"
     fi
 else

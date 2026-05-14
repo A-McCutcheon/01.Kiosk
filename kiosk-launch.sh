@@ -11,6 +11,10 @@
 # must never be treated as required for launch success on Wayland.
 
 set -euo pipefail
+# ERR trap: log the exact line number and exit status whenever set -e fires.
+# This allows the journal to pinpoint any unexpected early exit even when the
+# failing command produces no output of its own.
+trap 'echo "kiosk-launch: ERR exit at line ${LINENO} (status ${?})" >&2' ERR
 
 # ── Single-instance guard ─────────────────────────────────────────────────
 # Prevents a double-start race when both the systemd user service and the
@@ -369,6 +373,7 @@ if [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]] && command -v gdbus &>/dev/null; t
         | sed -n "s/.*'\\([^']*\\)'.*/\\1/p" | head -1 || true)
     echo "kiosk-launch: XDG activation token: ${_XDG_TOKEN:-<none -- portal unavailable>}" >&2
 fi
+echo "kiosk-launch: post-XDG-token state: FF_IS_SNAP=${_FF_IS_SNAP} session=${_LAUNCH_SESSION_LC}" >&2
 
 if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # snap Firefox on a Wayland session.
