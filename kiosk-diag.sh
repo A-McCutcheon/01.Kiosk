@@ -92,7 +92,7 @@ echo ""
 
 # ── Required runtime tools ────────────────────────────────────────────────
 echo "── Required runtime tools ────────────────────────────────────────────"
-for tool in xdotool wmctrl gdbus; do
+for tool in xdotool wmctrl gdbus xauth; do
     if command -v "${tool}" &>/dev/null; then
         _ok  "${tool} found ($(command -v "${tool}"))"
     else
@@ -246,8 +246,11 @@ elif ! grep -q 'env -u WAYLAND_DISPLAY' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     echo "     when the wayland plug is disconnected.  Firefox 131+ crashes (exit 1) when both"
     echo "     WAYLAND_DISPLAY and DISPLAY=:0 are present.  WAYLAND_DISPLAY must be stripped."
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'xauth.*extract.*DISPLAY' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing snap XAUTHORITY merge: Firefox reports 'cannot open display :0' because /run/user/UID/.mutter-Xwaylandauth.* is inaccessible inside the snap sandbox)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check, env -u WAYLAND_DISPLAY XWayland launch)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check, env -u WAYLAND_DISPLAY XWayland launch, snap XWayland Xauthority merge)"
 fi
 echo ""
 

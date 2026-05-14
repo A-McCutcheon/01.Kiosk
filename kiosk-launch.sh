@@ -474,6 +474,23 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
         # present simultaneously.  Strip WAYLAND_DISPLAY from the process
         # environment before exec so snap-confine sees it as absent and Firefox
         # auto-detects X11/XWayland via DISPLAY only.
+        #
+        # XAUTHORITY and snap confinement: snap's filesystem namespace does not
+        # expose /run/user/UID/ to the snap sandbox.  When XAUTHORITY points at
+        # a Mutter-generated file there (the normal GNOME Wayland case), Firefox
+        # inside snap cannot read it and fails with "cannot open display: :0".
+        # Fix: merge the cookie for $DISPLAY into $HOME/.Xauthority (always
+        # accessible via snap's 'home' interface) and update XAUTHORITY so the
+        # snap launcher passes the correct path into the sandbox.
+        if [[ -n "${XAUTHORITY:-}" ]] \
+                && [[ "${XAUTHORITY}" != "${HOME}/.Xauthority" ]] \
+                && [[ -f "${XAUTHORITY}" ]] \
+                && command -v xauth &>/dev/null; then
+            xauth -f "${XAUTHORITY}" extract - "${DISPLAY:-:0}" 2>/dev/null \
+                | xauth -f "${HOME}/.Xauthority" merge - 2>/dev/null || true
+            export XAUTHORITY="${HOME}/.Xauthority"
+            echo "kiosk-launch: snap XWayland: Xauthority merged to ${HOME}/.Xauthority" >&2
+        fi
         echo "kiosk-launch: launching snap Firefox (XWayland, XDG token: ${_XDG_TOKEN:-none})" >&2
         env -u WAYLAND_DISPLAY "${BROWSER}" \
             --kiosk \
