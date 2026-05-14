@@ -214,8 +214,44 @@ elif ! grep -q 'wmctrl -xa firefox' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q 'Firefox liveness' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing Firefox liveness and window-list diagnostics)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'XDG_ACTIVATION_TOKEN' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing XDG activation token for GNOME 46 focus grant)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, FF131+, snap fix, Wayland-native fallback, liveness probe)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, FF131+, snap fix, Wayland-native fallback, liveness probe, XDG token)"
+fi
+echo ""
+
+# ── Service restart check ──────────────────────────────────────────────────
+# After install.sh copies new scripts, the running kiosk-browser.service
+# continues to use the old in-memory code until the machine reboots.
+# Check the journal: if it contains a startup log line produced only by the
+# new code ("XDG activation token:"), the current code is running.  If the
+# freshness check passed but the journal doesn't have the new log line, the
+# service was not restarted after the last install.
+echo "── Service restart check ─────────────────────────────────────────────"
+if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
+    KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
+    _new_code_running=false
+    if [[ -n "${KIOSK_UID}" ]]; then
+        _new_code_running=$(journalctl --since "2 hours ago" --no-pager \
+            _UID="${KIOSK_UID}" _SYSTEMD_USER_UNIT="kiosk-browser.service" \
+            2>/dev/null \
+            | grep -q 'XDG activation token:' && echo true || echo false)
+    fi
+    if grep -q 'XDG_ACTIVATION_TOKEN' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+        # Installed script has the XDG token feature; check if it has actually run.
+        if "${_new_code_running}"; then
+            _ok  "kiosk-browser.service is running the current installed script"
+        else
+            _fail "kiosk-browser.service has NOT been restarted since the last install"
+            echo "     The running service is using the OLD kiosk-launch.sh."
+            echo "     → Reboot (preferred) OR:"
+            echo "       sudo -u ${KIOSK_USER} systemctl --user restart kiosk-browser.service"
+        fi
+    fi
+else
+    echo "  journalctl not available or kiosk user not found"
 fi
 echo ""
 

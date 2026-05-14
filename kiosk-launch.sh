@@ -334,13 +334,42 @@ EOF
 #   -no-remote – always start a fresh process; never reuse an existing
 #               instance that might not be in kiosk mode.
 _LAUNCH_SESSION_LC="$(printf '%s' "${XDG_SESSION_TYPE:-}" | tr '[:upper:]' '[:lower:]')"
-# _FF_USING_XWAYLAND: set to true when snap Firefox is forced onto XWayland so
-# the activation subshell can treat the window as X11 (full 30-retry poll,
-# skip the Wayland GNOME Shell Eval fallback path).
+# _FF_USING_XWAYLAND: kept false for snap Firefox on Wayland.  Although we
+# send env -u WAYLAND_DISPLAY / MOZ_ENABLE_WAYLAND=0, snap-confine's 'desktop'
+# interface plug re-injects WAYLAND_DISPLAY inside the snap namespace so Firefox
+# always runs as a native Wayland client regardless.  We therefore use the
+# Wayland activation path (3-retry poll + XDG activation token) rather than the
+# 30-retry X11 poll which can never find a Wayland-native window in time.
 _FF_USING_XWAYLAND=false
+
+# ── XDG activation token (GNOME 46+ focus grant) ─────────────────────────────
+# On GNOME 46, a Wayland client that maps a window without a valid XDG
+# activation token is subject to focus-stealing prevention: the window is
+# created but GNOME Shell never delivers an activation event, so --kiosk
+# Firefox appears blank or invisible until something (e.g. Alt+Tab) focuses it.
+#
+# The xdg-desktop-portal Activation interface (added in portal 1.18, shipping
+# on Ubuntu 24.04) provides a compositor-backed token from a background process.
+# We request the token here and pass it as XDG_ACTIVATION_TOKEN to Firefox;
+# the Wayland client consumes the token when it creates its first surface and
+# receives unconditional focus from the compositor.
+#
+# If the portal call fails (older system, non-GNOME session, or portal not
+# running) the variable is left empty and Firefox falls back to the existing
+# wmctrl/gdbus activation fallbacks in the subshell below.
+_XDG_TOKEN=""
+if [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]] && command -v gdbus &>/dev/null; then
+    _XDG_TOKEN=$(gdbus call --session \
+        --dest org.freedesktop.portal.Desktop \
+        --object-path /org/freedesktop/portal/desktop \
+        --method org.freedesktop.portal.Activation.RequestToken \
+        "{'reason': <'Kiosk browser launch'>}" 2>/dev/null \
+        | sed -n "s/.*'\\([^']*\\)'.*/\\1/p" | head -1 || true)
+    echo "kiosk-launch: XDG activation token: ${_XDG_TOKEN:-<none – portal unavailable>}" >&2
+fi
+
 if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
-    # snap Firefox on Wayland → force XWayland so xdotool/wmctrl can manage
-    # the window and --kiosk focus is granted without an activation token.
+    # snap Firefox on a Wayland session.
     #
     # IMPORTANT – snap Wayland interface:
     # snap-confine's 'wayland' interface plug mounts the host Wayland socket
@@ -349,27 +378,24 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # what the host environment contains, so env -u WAYLAND_DISPLAY alone does
     # not prevent Firefox from connecting to Wayland.
     #
-    # The definitive fix is 'sudo snap disconnect firefox:wayland' (run by
-    # install.sh).  Without that step the mechanisms below are insufficient.
-    #
-    # Additional mechanisms that reinforce the disconnection:
-    #
-    # 1. env -u WAYLAND_DISPLAY – removes WAYLAND_DISPLAY from the subprocess
-    #    environment.  Useful if the plug is disconnected and as a belt-and-
-    #    suspenders measure for future snap versions.
-    #
-    # 2. MOZ_ENABLE_WAYLAND=0 – kept for Firefox versions prior to 131 that
-    #    still honour the variable.
+    # Even after 'sudo snap disconnect firefox:wayland' (run by install.sh), the
+    # snap 'desktop' interface continues to provide the Wayland socket, so snap
+    # Firefox ALWAYS runs as a native Wayland client.  We therefore:
+    #   a) Pass XDG_ACTIVATION_TOKEN (obtained above) so GNOME Shell immediately
+    #      grants fullscreen focus to Firefox's Wayland window.
+    #   b) Keep env -u WAYLAND_DISPLAY / MOZ_ENABLE_WAYLAND=0 as belt-and-
+    #      suspenders for hypothetical snap builds that fully honour the wayland
+    #      disconnect (these flags do no harm when the desktop plug re-injects).
+    #   c) Set _FF_USING_XWAYLAND=false so the activation subshell uses the
+    #      fast 3-retry Wayland poll rather than the 30-retry X11 poll.
     #
     # NOTE: GDK_BACKEND=x11 is intentionally NOT set.  Firefox manages its own
     # Wayland/X11 backend independently of GTK; GDK_BACKEND targets only GTK
     # dialogs and crashes inside the snap sandbox before any window opens.
     #
-    # XAUTHORITY: in a systemd user service XAUTHORITY may not be propagated
-    # from the GNOME session.  Without it Firefox cannot authenticate with the
-    # XWayland server and silently falls back to the Wayland backend.  Probe
-    # Mutter's XWayland auth file (written to $XDG_RUNTIME_DIR on every boot)
-    # and export it before launching so Firefox always gets a valid credential.
+    # XAUTHORITY: export Mutter's XWayland auth file so that xdotool/wmctrl
+    # (running in the activation subshell) can authenticate with XWayland even
+    # when XAUTHORITY is not propagated from the GNOME session into this service.
     if [[ -z "${XAUTHORITY:-}" ]]; then
         _xauth_rt="${XDG_RUNTIME_DIR:-}"
         # XDG_RUNTIME_DIR is always set in GNOME systemd user services; the
@@ -393,8 +419,10 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
             echo "kiosk-launch: using XWayland auth file: ${_xauth_cand}" >&2
         fi
     fi
-    _FF_USING_XWAYLAND=true
-    echo "kiosk-launch: launching snap Firefox on XWayland (DISPLAY=${DISPLAY:-:0})" >&2
+    # Export XDG_ACTIVATION_TOKEN so the forked Firefox subprocess inherits it.
+    # An empty token is harmless – Firefox treats it as "no token provided".
+    export XDG_ACTIVATION_TOKEN="${_XDG_TOKEN}"
+    echo "kiosk-launch: launching snap Firefox (Wayland-native via desktop plug, XDG token: ${_XDG_TOKEN:-none})" >&2
     env -u WAYLAND_DISPLAY \
         DISPLAY="${DISPLAY:-:0}" MOZ_ENABLE_WAYLAND=0 MOZ_WEBRENDER=0 \
         "${BROWSER}" \
@@ -402,13 +430,17 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
         -no-remote \
         -profile "${_FF_PROFILE_DIR}" \
         "${URL}" 9>&- &
+    unset XDG_ACTIVATION_TOKEN  # consumed by Firefox; do not leak to other children
 elif [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # apt (non-snap) Firefox on a Wayland session → native Wayland back-end.
+    export XDG_ACTIVATION_TOKEN="${_XDG_TOKEN}"
+    echo "kiosk-launch: launching apt Firefox (Wayland-native, XDG token: ${_XDG_TOKEN:-none})" >&2
     MOZ_ENABLE_WAYLAND=1 "${BROWSER}" \
         --kiosk \
         -no-remote \
         -profile "${_FF_PROFILE_DIR}" \
         "${URL}" 9>&- &
+    unset XDG_ACTIVATION_TOKEN
 else
     # X11 / XWayland session → disable GPU WebRender to prevent artefacts.
     MOZ_WEBRENDER=0 "${BROWSER}" \
