@@ -415,7 +415,7 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
                 -name '.mutter-Xwaylandauth.*' -printf '%T@\t%p\n' 2>/dev/null \
                 | sort -rn | head -1 | cut -f2)"
         fi
-        [[ -z "${_xauth_cand}" ]] && _xauth_cand="${HOME}/.Xauthority"
+        [[ -n "${_xauth_cand}" ]] || _xauth_cand="${HOME}/.Xauthority"
         if [[ -f "${_xauth_cand}" ]]; then
             export XAUTHORITY="${_xauth_cand}"
             echo "kiosk-launch: using XWayland auth file: ${_xauth_cand}" >&2
