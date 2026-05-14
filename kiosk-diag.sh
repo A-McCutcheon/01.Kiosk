@@ -234,7 +234,7 @@ if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
     _new_code_running=false
     if [[ -n "${KIOSK_UID}" ]]; then
-        _new_code_running=$(journalctl --since "2 hours ago" --no-pager \
+        _new_code_running=$(journalctl --boot --no-pager \
             _UID="${KIOSK_UID}" _SYSTEMD_USER_UNIT="kiosk-browser.service" \
             2>/dev/null \
             | grep -q 'XDG activation token:' && echo true || echo false)

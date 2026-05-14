@@ -365,7 +365,7 @@ if [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]] && command -v gdbus &>/dev/null; t
         --method org.freedesktop.portal.Activation.RequestToken \
         "{'reason': <'Kiosk browser launch'>}" 2>/dev/null \
         | sed -n "s/.*'\\([^']*\\)'.*/\\1/p" | head -1 || true)
-    echo "kiosk-launch: XDG activation token: ${_XDG_TOKEN:-<none – portal unavailable>}" >&2
+    echo "kiosk-launch: XDG activation token: ${_XDG_TOKEN:-<none -- portal unavailable>}" >&2
 fi
 
 if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
