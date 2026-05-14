@@ -405,15 +405,20 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
         # is numeric to prevent unexpected command-substitution results.
         if [[ -z "${_xauth_rt}" ]]; then
             _xauth_uid="$(id -u 2>/dev/null || true)"
-            [[ "${_xauth_uid}" =~ ^[0-9]+$ ]] && _xauth_rt="/run/user/${_xauth_uid}"
+            # NOTE: [[ ]] && assignment exits 1 under set -e when the test
+            # is false; use || true to keep the overall expression exit 0.
+            [[ "${_xauth_uid}" =~ ^[0-9]+$ ]] && _xauth_rt="/run/user/${_xauth_uid}" || true
         fi
         _xauth_cand=""
         if [[ -n "${_xauth_rt}" ]]; then
             # Select the most recently modified Mutter XWayland auth file;
             # sort by mtime so any stale copies from a crash are skipped.
-            _xauth_cand="$(find "${_xauth_rt}" -maxdepth 1 \
+            # || true: prevents set -e abort when (a) find exits non-zero
+            # (e.g. permission error on a socket in /run/user/UID), or (b)
+            # sort receives SIGPIPE from head -1 when 2+ files are found.
+            _xauth_cand="$(find "${_xauth_rt}" -maxdepth 1 -type f \
                 -name '.mutter-Xwaylandauth.*' -printf '%T@\t%p\n' 2>/dev/null \
-                | sort -rn | head -1 | cut -f2)"
+                | sort -rn | head -1 | cut -f2 || true)"
         fi
         [[ -n "${_xauth_cand}" ]] || _xauth_cand="${HOME}/.Xauthority"
         if [[ -f "${_xauth_cand}" ]]; then
@@ -421,6 +426,7 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
             echo "kiosk-launch: using XWayland auth file: ${_xauth_cand}" >&2
         fi
     fi
+    echo "kiosk-launch: XAUTHORITY block complete: XAUTHORITY=${XAUTHORITY:-<unset>}" >&2
     # Export XDG_ACTIVATION_TOKEN so the forked Firefox subprocess inherits it.
     # An empty token is harmless – Firefox treats it as "no token provided".
     export XDG_ACTIVATION_TOKEN="${_XDG_TOKEN}"

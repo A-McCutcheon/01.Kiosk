@@ -226,8 +226,11 @@ elif ! grep -q 'timeout 3.*gdbus' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q '_xauth_cand.*\]\] ||' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (XAUTHORITY probe aborts script under set -e when Mutter auth file is found -- Firefox never launches)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'cut -f2 || true' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (find|sort|head pipeline aborts under set -o pipefail -- SIGPIPE from sort when 2+ Xwayland auth files exist, or find exits non-zero)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY fix, liveness probe)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe)"
 fi
 echo ""
 
