@@ -504,6 +504,26 @@ echo "kiosk-launch: Firefox launched PID=${FIREFOX_PID} XAUTHORITY=${XAUTHORITY:
     done
     echo "kiosk-launch: xdotool search complete: WIN_ID=${_WIN_ID:-<none>} IS_WAYLAND=${_IS_WAYLAND} XAUTHORITY=${_XAUTH:-<unset>}" >&2
 
+    # ── Diagnostics: Firefox liveness + EWMH window list ─────────────────
+    # Logged unconditionally so the journal always shows whether Firefox was
+    # alive and what windows GNOME knew about at the point the X11 poll ended.
+    if kill -0 "${FIREFOX_PID:-}" 2>/dev/null; then
+        echo "kiosk-launch: Firefox PID ${FIREFOX_PID} alive at xdotool timeout" >&2
+    else
+        echo "kiosk-launch: Firefox PID ${FIREFOX_PID:-<unset>} already exited at xdotool timeout" >&2
+    fi
+    if command -v wmctrl &>/dev/null; then
+        _wm_list="$(DISPLAY="${_DISP}" wmctrl -l 2>/dev/null || true)"
+        if [[ -n "${_wm_list}" ]]; then
+            echo "kiosk-launch: EWMH window list at xdotool timeout:" >&2
+            while IFS= read -r _wm_ln; do
+                echo "  ${_wm_ln}" >&2
+            done <<< "${_wm_list}"
+        else
+            echo "kiosk-launch: EWMH window list: (empty – no windows visible to Mutter)" >&2
+        fi
+    fi
+
     if [[ -z "${_WIN_ID}" ]] && ( "${_IS_WAYLAND}" || "${_FF_USING_XWAYLAND:-false}" ); then
         echo "kiosk-launch: no X11 Firefox window; trying Wayland-compatible activation" >&2
         # When using the native-Wayland path (3-retry poll), Firefox's Wayland
@@ -689,7 +709,9 @@ _cleanup_overlay() {
 trap '_cleanup_overlay' EXIT
 
 # Keep this script alive until Firefox exits
-wait "${FIREFOX_PID}" || true
+_ff_exit=0
+wait "${FIREFOX_PID}" || _ff_exit=$?
+echo "kiosk-launch: Firefox (PID ${FIREFOX_PID}) exited with status ${_ff_exit}" >&2
 
 # ── When the browser exits, reopen the config app ─────────────────────────
 # Release the single-instance lock first so the new kiosk-launch.sh that
