@@ -235,8 +235,13 @@ elif ! grep -q 'ERR exit at line' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q 'post-XDG-token state' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing post-XDG-token diagnostic log -- cannot distinguish launch branch from journal)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q '_ff_wayland_slot' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing snap wayland-plug runtime check)"
+    echo "     Without it the activation subshell uses 3-retry Wayland poll even when snap"
+    echo "     Firefox is on XWayland, so the Firefox window is never found and never appears."
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check)"
 fi
 echo ""
 
@@ -244,9 +249,9 @@ echo ""
 # After install.sh copies new scripts, the running kiosk-browser.service
 # continues to use the old in-memory code until the machine reboots.
 # Check the journal: if it contains a startup log line produced only by the
-# new code ("post-XDG-token state:"), the current code is running.  If the
-# freshness check passed but the journal doesn't have the new log line, the
-# service was not restarted after the last install.
+# new code ("FF_USING_XWAYLAND=" in the post-XDG-token state log), the current
+# code is running.  If the freshness check passed but the journal doesn't have
+# the new log line, the service was not restarted after the last install.
 echo "── Service restart check ─────────────────────────────────────────────"
 if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
@@ -255,10 +260,10 @@ if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
         _new_code_running=$(journalctl --boot --no-pager \
             _UID="${KIOSK_UID}" _SYSTEMD_USER_UNIT="kiosk-browser.service" \
             2>/dev/null \
-            | grep -q 'post-XDG-token state:' && echo true || echo false)
+            | grep -q 'FF_USING_XWAYLAND=' && echo true || echo false)
     fi
-    if grep -q 'post-XDG-token state' "${INSTALLED_LAUNCH}" 2>/dev/null; then
-        # Installed script has the ERR-trap + post-XDG diagnostic; check if it has run.
+    if grep -q '_ff_wayland_slot' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+        # Installed script has the snap wayland-plug runtime check; verify it has run.
         if "${_new_code_running}"; then
             _ok  "kiosk-browser.service is running the current installed script"
         else
