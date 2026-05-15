@@ -183,8 +183,14 @@ if "${_FF_IS_SNAP}"; then
     # accessible inside the snap confinement, stable across snap updates,
     # and not subject to the dot-directory restriction of the 'home' interface.
     _FF_PROFILE_DIR="${HOME}/snap/firefox/common/kiosk-profile"
+    # Keep the X11 cookie in a non-dot path under SNAP_USER_COMMON as well.
+    # The snap 'home' interface does not reliably expose ~/.Xauthority, so a
+    # top-level dotfile in $HOME can still leave Firefox unable to read the
+    # cookie and fail with "cannot open display: :0".
+    _FF_SNAP_XAUTH="${HOME}/snap/firefox/common/kiosk-xauth"
 else
     _FF_PROFILE_DIR="${HOME}/.config/kiosk/firefox-profile"
+    _FF_SNAP_XAUTH=""
 fi
 
 # ── Kill any lingering Firefox process before launching ───────────────────
@@ -505,9 +511,15 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
             | awk '$1 == "x11" { print $3; exit }' || true)"
         echo "kiosk-launch: snap connections: wayland=${_ff_wayland_slot:-?} x11=${_snap_x11_slot:-?}" >&2
     fi
-    if command -v xauth &>/dev/null && [[ -f "${HOME}/.Xauthority" ]]; then
-        echo "kiosk-launch: xauth ~/.Xauthority entries:" >&2
-        xauth -f "${HOME}/.Xauthority" list 2>/dev/null \
+    _ff_dbg_xauth="${XAUTHORITY:-}"
+    if [[ -z "${_ff_dbg_xauth}" ]] && [[ -n "${_FF_SNAP_XAUTH:-}" ]] \
+            && [[ -f "${_FF_SNAP_XAUTH}" ]]; then
+        _ff_dbg_xauth="${_FF_SNAP_XAUTH}"
+    fi
+    if command -v xauth &>/dev/null && [[ -n "${_ff_dbg_xauth}" ]] \
+            && [[ -f "${_ff_dbg_xauth}" ]]; then
+        echo "kiosk-launch: xauth ${_ff_dbg_xauth} entries:" >&2
+        xauth -f "${_ff_dbg_xauth}" list 2>/dev/null \
             | while IFS= read -r _xa_ln; do echo "  ${_xa_ln}" >&2; done || true
     fi
     if "${_FF_USING_XWAYLAND}"; then
@@ -524,18 +536,20 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
         # expose /run/user/UID/ to the snap sandbox.  When XAUTHORITY points at
         # a Mutter-generated file there (the normal GNOME Wayland case), Firefox
         # inside snap cannot read it and fails with "cannot open display: :0".
-        # Fix: merge the cookie for $DISPLAY into $HOME/.Xauthority (always
-        # accessible via snap's 'home' interface) and update XAUTHORITY so the
-        # snap launcher passes the correct path into the sandbox.
+        # Fix: merge the cookie into a non-dot file under ~/snap/firefox/common/
+        # (snap's $SNAP_USER_COMMON) and update XAUTHORITY so the snap launcher
+        # passes a snap-readable path into the sandbox.
         if command -v xauth &>/dev/null; then
             # Find the live Mutter XWayland auth file.  When XAUTHORITY is
-            # already ~/.Xauthority (GNOME session default or leftover from a
-            # previous launch), look up the mutter file directly so we always
-            # merge a fresh cookie.  Merge ALL entries – not just the entry for
-            # ${DISPLAY} – because Mutter stores cookies as "hostname/unix:0"
-            # which does not match the ":0" extract key, causing a silent no-op.
+            # already the snap-readable cache path (or a leftover ~/.Xauthority
+            # from an older build), look up the mutter file directly so we
+            # always merge a fresh cookie.  Merge ALL entries – not just the
+            # entry for ${DISPLAY} – because Mutter stores cookies as
+            # "hostname/unix:0" which does not match the ":0" extract key,
+            # causing a silent no-op.
             _mm_src="${XAUTHORITY:-}"
             if [[ "${_mm_src}" == "${HOME}/.Xauthority" ]] \
+                    || [[ "${_mm_src}" == "${_FF_SNAP_XAUTH}" ]] \
                     || [[ -z "${_mm_src}" ]]; then
                 _mm_rt="${XDG_RUNTIME_DIR:-}"
                 if [[ -z "${_mm_rt}" ]]; then
@@ -552,10 +566,14 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
             fi
             if [[ -n "${_mm_src}" ]] \
                     && [[ "${_mm_src}" != "${HOME}/.Xauthority" ]] \
+                    && [[ "${_mm_src}" != "${_FF_SNAP_XAUTH}" ]] \
                     && [[ -f "${_mm_src}" ]]; then
-                xauth -f "${HOME}/.Xauthority" merge "${_mm_src}" 2>/dev/null || true
-                export XAUTHORITY="${HOME}/.Xauthority"
-                echo "kiosk-launch: snap XWayland: Xauthority merged to ${HOME}/.Xauthority" >&2
+                mkdir -p "$(dirname "${_FF_SNAP_XAUTH}")" 2>/dev/null || true
+                : > "${_FF_SNAP_XAUTH}" 2>/dev/null || true
+                xauth -f "${_FF_SNAP_XAUTH}" merge "${_mm_src}" 2>/dev/null || true
+                chmod 600 "${_FF_SNAP_XAUTH}" 2>/dev/null || true
+                export XAUTHORITY="${_FF_SNAP_XAUTH}"
+                echo "kiosk-launch: snap XWayland: Xauthority merged to ${_FF_SNAP_XAUTH}" >&2
             fi
         fi
         echo "kiosk-launch: launching snap Firefox (XWayland, XDG token: ${_XDG_TOKEN:-none})" >&2
@@ -648,6 +666,7 @@ echo "kiosk-launch: Firefox launched PID=${FIREFOX_PID} XAUTHORITY=${XAUTHORITY:
     if [[ -z "${_XAUTH}" ]]; then
         _RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
         for _candidate in "${_RUNTIME}"/.mutter-Xwaylandauth.* \
+                          "${_FF_SNAP_XAUTH:-}" \
                           "${HOME}/.Xauthority"; do
             if [[ -f "${_candidate}" ]]; then
                 _XAUTH="${_candidate}"

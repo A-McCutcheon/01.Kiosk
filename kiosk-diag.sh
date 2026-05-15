@@ -268,6 +268,9 @@ elif ! grep -q '_mm_src' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (xauth extract-by-display is a silent no-op: Mutter stores cookies as 'hostname/unix:0', not ':0'; must merge ALL entries via xauth merge)"
     echo "     Also: merge is skipped on restart when XAUTHORITY is already ~/.Xauthority."
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'kiosk-xauth' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (snap XWayland auth is still cached in ~/.Xauthority, which the Firefox snap may not be able to read)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 elif ! grep -q '\-u GDK_BACKEND' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing GDK_BACKEND suppression: if GDK_BACKEND=wayland is set in the session environment, GTK refuses to use X11 and Firefox crashes with exit 1 on the XWayland path)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
@@ -284,7 +287,7 @@ elif ! grep -q 'Mutter Xauth files:' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing Mutter Xauth file list in pre-launch diagnostics)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check, env -u WAYLAND_DISPLAY XWayland launch, snap XWayland full Xauth merge, env -u GDK_BACKEND, pre-launch env diagnostics, Firefox stderr capture, snap crash logs, XWayland socket check, Mutter Xauth file list)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check, env -u WAYLAND_DISPLAY XWayland launch, snap XWayland full Xauth merge, snap-readable kiosk-xauth cache, env -u GDK_BACKEND, pre-launch env diagnostics, Firefox stderr capture, snap crash logs, XWayland socket check, Mutter Xauth file list)"
 fi
 echo ""
 
@@ -434,18 +437,24 @@ fi
 echo ""
 
 # ── XWayland auth entries ──────────────────────────────────────────────────
-# Shows the MIT-MAGIC-COOKIE entries in the kiosk user's ~/.Xauthority and
-# in Mutter's live XWayland auth file.  Both must contain matching cookies
-# for Firefox (inside the snap sandbox) to connect to display :0.
+# Shows the MIT-MAGIC-COOKIE entries in the snap-readable Xauth cache and in
+# Mutter's live XWayland auth file.  Both must contain matching cookies for
+# Firefox (inside the snap sandbox) to connect to display :0.
 echo "── XWayland auth entries ─────────────────────────────────────────────"
 if command -v xauth &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
-    _xauth_file="${KIOSK_HOME}/.Xauthority"
+    _xauth_file="${KIOSK_HOME}/snap/firefox/common/kiosk-xauth"
     if [[ -f "${_xauth_file}" ]]; then
         echo "  ${_xauth_file}:"
         xauth -f "${_xauth_file}" list 2>/dev/null | sed 's/^/    /' \
             || echo "    (xauth list failed)"
     else
         echo "  ${_xauth_file} does not exist"
+    fi
+    _legacy_xauth="${KIOSK_HOME}/.Xauthority"
+    if [[ -f "${_legacy_xauth}" ]]; then
+        echo "  Legacy ${_legacy_xauth}:"
+        xauth -f "${_legacy_xauth}" list 2>/dev/null | sed 's/^/    /' \
+            || echo "    (xauth list failed)"
     fi
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
     if [[ -n "${KIOSK_UID}" ]]; then
