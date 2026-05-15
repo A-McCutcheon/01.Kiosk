@@ -268,7 +268,7 @@ elif ! grep -q '_mm_src' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (xauth extract-by-display is a silent no-op: Mutter stores cookies as 'hostname/unix:0', not ':0'; must merge ALL entries via xauth merge)"
     echo "     Also: merge is skipped on restart when XAUTHORITY is already ~/.Xauthority."
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
-elif ! grep -q 'kiosk-xauth' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+elif ! grep -q '_FF_SNAP_XAUTH=.*kiosk-xauth' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (snap XWayland auth is still cached in ~/.Xauthority, which the Firefox snap may not be able to read)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 elif ! grep -q '\-u GDK_BACKEND' "${INSTALLED_LAUNCH}" 2>/dev/null; then

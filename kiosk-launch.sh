@@ -666,8 +666,12 @@ echo "kiosk-launch: Firefox launched PID=${FIREFOX_PID} XAUTHORITY=${XAUTHORITY:
     if [[ -z "${_XAUTH}" ]]; then
         _RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
         for _candidate in "${_RUNTIME}"/.mutter-Xwaylandauth.* \
-                          "${_FF_SNAP_XAUTH:-}" \
                           "${HOME}/.Xauthority"; do
+            if [[ -z "${_XAUTH}" ]] && [[ -n "${_FF_SNAP_XAUTH:-}" ]] \
+                    && [[ -f "${_FF_SNAP_XAUTH}" ]]; then
+                _XAUTH="${_FF_SNAP_XAUTH}"
+                break
+            fi
             if [[ -f "${_candidate}" ]]; then
                 _XAUTH="${_candidate}"
                 break
