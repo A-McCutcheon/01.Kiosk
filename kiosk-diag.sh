@@ -288,7 +288,7 @@ elif ! grep -q 'Mutter Xauth files:' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing Mutter Xauth file list in pre-launch diagnostics)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check, env -u WAYLAND_DISPLAY XWayland launch, snap XWayland full Xauth merge, snap-readable kiosk-xauth cache, env -u GDK_BACKEND, pre-launch env diagnostics, Firefox stderr capture, snap crash logs, XWayland socket check, Mutter Xauth file list)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (includes snap XWayland launch fixes, kiosk-xauth cache, crash diagnostics, and pre-launch display/Xauth logging)"
 fi
 echo ""
 

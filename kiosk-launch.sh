@@ -571,11 +571,12 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
                 # but ensure the cache directory exists before writing the file
                 # so ad-hoc test environments do not fail on the first launch.
                 if install -d -m 700 "$(dirname "${_FF_SNAP_XAUTH}")" 2>/dev/null; then
-                    if ! ( umask 077; xauth -f "${_FF_SNAP_XAUTH}" merge "${_mm_src}" 2>/dev/null ); then
+                    if ( umask 077; xauth -f "${_FF_SNAP_XAUTH}" merge "${_mm_src}" 2>/dev/null ); then
+                        export XAUTHORITY="${_FF_SNAP_XAUTH}"
+                        echo "kiosk-launch: snap XWayland: Xauthority merged to ${_FF_SNAP_XAUTH}" >&2
+                    else
                         echo "kiosk-launch: WARNING failed to merge Xauthority into ${_FF_SNAP_XAUTH}" >&2
                     fi
-                    export XAUTHORITY="${_FF_SNAP_XAUTH}"
-                    echo "kiosk-launch: snap XWayland: Xauthority merged to ${_FF_SNAP_XAUTH}" >&2
                 else
                     echo "kiosk-launch: WARNING failed to prepare snap-readable Xauthority cache: ${_FF_SNAP_XAUTH}" >&2
                 fi
