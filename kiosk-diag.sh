@@ -268,7 +268,7 @@ elif ! grep -q '_mm_src' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (xauth extract-by-display is a silent no-op: Mutter stores cookies as 'hostname/unix:0', not ':0'; must merge ALL entries via xauth merge)"
     echo "     Also: merge is skipped on restart when XAUTHORITY is already ~/.Xauthority."
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
-elif ! grep -q 'env -u GDK_BACKEND' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+elif ! grep -q '\-u GDK_BACKEND' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing GDK_BACKEND suppression: if GDK_BACKEND=wayland is set in the session environment, GTK refuses to use X11 and Firefox crashes with exit 1 on the XWayland path)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 elif ! grep -q 'Firefox stderr output:' "${INSTALLED_LAUNCH}" 2>/dev/null; then
