@@ -271,14 +271,20 @@ elif ! grep -q '_mm_src' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q 'env -u GDK_BACKEND' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing GDK_BACKEND suppression: if GDK_BACKEND=wayland is set in the session environment, GTK refuses to use X11 and Firefox crashes with exit 1 on the XWayland path)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
-elif ! grep -q 'pre-launch env:' "${INSTALLED_LAUNCH}" 2>/dev/null; then
-    _fail "${INSTALLED_LAUNCH} is outdated (missing pre-launch environment diagnostics)"
-    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
-elif ! grep -q 'Firefox stderr output' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+elif ! grep -q 'Firefox stderr output:' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing Firefox stderr capture for crash diagnostics)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'snap logs firefox -n' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing snap logs capture on crash: cannot see Firefox's startup error from the snap journal)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'XWayland socket:' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing XWayland socket state in pre-launch diagnostics)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'Mutter Xauth files:' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing Mutter Xauth file list in pre-launch diagnostics)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check, env -u WAYLAND_DISPLAY XWayland launch, snap XWayland full Xauth merge, env -u GDK_BACKEND, pre-launch env diagnostics, Firefox stderr capture)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check, env -u WAYLAND_DISPLAY XWayland launch, snap XWayland full Xauth merge, env -u GDK_BACKEND, pre-launch env diagnostics, Firefox stderr capture, snap crash logs, XWayland socket check, Mutter Xauth file list)"
 fi
 echo ""
 
@@ -354,7 +360,7 @@ if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
     if [[ -n "${KIOSK_UID}" ]]; then
         _ff_log=$(journalctl --boot --no-pager _UID="${KIOSK_UID}" _COMM=firefox \
-            2>/dev/null | tail -30)
+            2>/dev/null | tail -50)
         if [[ -n "${_ff_log}" ]]; then
             echo "${_ff_log}" | sed 's/^/  /'
         else
@@ -371,7 +377,7 @@ echo ""
 # which captures Firefox's own stdout/stderr before the process crashes.
 echo "── snap Firefox logs (last 30 lines) ────────────────────────────────"
 if "${_diag_ff_is_snap}" && command -v snap &>/dev/null; then
-    snap logs firefox 2>/dev/null | tail -30 | sed 's/^/  /' \
+    snap logs firefox 2>/dev/null | tail -50 | sed 's/^/  /' \
         || echo "  (snap logs command failed – try: sudo snap logs firefox)"
 else
     echo "  ℹ  snap Firefox not detected – snap logs skipped."
@@ -413,7 +419,7 @@ if command -v systemctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
             DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${KIOSK_UID}/bus" \
             XDG_RUNTIME_DIR="/run/user/${KIOSK_UID}" \
             systemctl --user show-environment 2>/dev/null \
-            | grep -E '^(DISPLAY|WAYLAND_DISPLAY|GDK_BACKEND|DBUS_SESSION_BUS_ADDRESS|XDG_SESSION_TYPE|XDG_SESSION_CLASS|XAUTHORITY)=' \
+            | grep -E '^(DISPLAY|WAYLAND_DISPLAY|GDK_BACKEND|DBUS_SESSION_BUS_ADDRESS|XDG_SESSION_TYPE|XDG_SESSION_CLASS|XAUTHORITY|MOZ_ENABLE_WAYLAND)=' \
             | sort || true)
     fi
     if [[ -n "${_kiosk_env}" ]]; then
