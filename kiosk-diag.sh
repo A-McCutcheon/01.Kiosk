@@ -355,7 +355,7 @@ echo ""
 # Firefox logs its own startup errors under a separate journald identifier
 # (_COMM=firefox), distinct from the kiosk-browser.service entries above.
 # These entries are essential for diagnosing exit-status-1 startup crashes.
-echo "── Firefox process journal (last 30 lines) ──────────────────────────"
+echo "── Firefox process journal (last 50 lines) ──────────────────────────"
 if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
     if [[ -n "${KIOSK_UID}" ]]; then
@@ -375,7 +375,7 @@ echo ""
 # ── snap Firefox logs ──────────────────────────────────────────────────────
 # 'snap logs firefox' shows the snap.firefox.firefox systemd service journal,
 # which captures Firefox's own stdout/stderr before the process crashes.
-echo "── snap Firefox logs (last 30 lines) ────────────────────────────────"
+echo "── snap Firefox logs (last 50 lines) ────────────────────────────────"
 if "${_diag_ff_is_snap}" && command -v snap &>/dev/null; then
     snap logs firefox 2>/dev/null | tail -50 | sed 's/^/  /' \
         || echo "  (snap logs command failed – try: sudo snap logs firefox)"
