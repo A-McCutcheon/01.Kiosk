@@ -403,6 +403,25 @@ if [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]] && ! "${_FF_USING_XWAYLAND}" \
 fi
 echo "kiosk-launch: post-XDG-token state: FF_IS_SNAP=${_FF_IS_SNAP} FF_USING_XWAYLAND=${_FF_USING_XWAYLAND} session=${_LAUNCH_SESSION_LC}" >&2
 
+# ── Firefox stderr capture + pre-launch environment snapshot ─────────────────
+# Only capture when XDG_RUNTIME_DIR is set (always the case in a systemd user
+# service; absent only in bare-shell testing where /tmp would be world-readable
+# and allow predictable-name symlink attacks).  /dev/null is used as a safe
+# no-op fallback so all four launch paths can unconditionally write to this var.
+if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+    _ff_stderr_log="${XDG_RUNTIME_DIR}/kiosk-ff-stderr.log"
+    rm -f "${_ff_stderr_log}" 2>/dev/null || true
+else
+    _ff_stderr_log="/dev/null"
+fi
+
+echo "kiosk-launch: pre-launch env: GDK_BACKEND=${GDK_BACKEND:-<unset>} WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-<unset>} DISPLAY=${DISPLAY:-<unset>} XAUTHORITY=${XAUTHORITY:-<unset>}" >&2
+if [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
+    echo "kiosk-launch: DBUS_SESSION_BUS_ADDRESS is set" >&2
+else
+    echo "kiosk-launch: WARNING DBUS_SESSION_BUS_ADDRESS is not set" >&2
+fi
+
 if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # snap Firefox on a Wayland session.
     #
@@ -465,6 +484,17 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # Export XDG_ACTIVATION_TOKEN so the forked Firefox subprocess inherits it.
     # An empty token is harmless – Firefox treats it as "no token provided".
     export XDG_ACTIVATION_TOKEN="${_XDG_TOKEN}"
+    # ── Snap interface + XAuth diagnostics (logged before every launch) ──────
+    if command -v snap &>/dev/null; then
+        _snap_x11_slot="$(snap connections firefox 2>/dev/null \
+            | awk '$1 == "x11" { print $3; exit }' || true)"
+        echo "kiosk-launch: snap connections: wayland=${_ff_wayland_slot:-?} x11=${_snap_x11_slot:-?}" >&2
+    fi
+    if command -v xauth &>/dev/null && [[ -f "${HOME}/.Xauthority" ]]; then
+        echo "kiosk-launch: xauth ~/.Xauthority entries:" >&2
+        xauth -f "${HOME}/.Xauthority" list 2>/dev/null \
+            | while IFS= read -r _xa_ln; do echo "  ${_xa_ln}" >&2; done || true
+    fi
     if "${_FF_USING_XWAYLAND}"; then
         # XWayland path: snap-confine's 'desktop' interface still exposes
         # WAYLAND_DISPLAY inside the snap namespace even when the 'wayland'
@@ -514,18 +544,18 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
             fi
         fi
         echo "kiosk-launch: launching snap Firefox (XWayland, XDG token: ${_XDG_TOKEN:-none})" >&2
-        env -u WAYLAND_DISPLAY "${BROWSER}" \
+        env -u WAYLAND_DISPLAY -u GDK_BACKEND "${BROWSER}" \
             --kiosk \
             -no-remote \
             -profile "${_FF_PROFILE_DIR}" \
-            "${URL}" 9>&- &
+            "${URL}" 9>&- 2>"${_ff_stderr_log}" &
     else
         echo "kiosk-launch: launching snap Firefox (Wayland-native, XDG token: ${_XDG_TOKEN:-none})" >&2
         "${BROWSER}" \
             --kiosk \
             -no-remote \
             -profile "${_FF_PROFILE_DIR}" \
-            "${URL}" 9>&- &
+            "${URL}" 9>&- 2>"${_ff_stderr_log}" &
     fi
     unset XDG_ACTIVATION_TOKEN  # consumed by Firefox; do not leak to other children
 elif [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
@@ -536,7 +566,7 @@ elif [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
         --kiosk \
         -no-remote \
         -profile "${_FF_PROFILE_DIR}" \
-        "${URL}" 9>&- &
+        "${URL}" 9>&- 2>"${_ff_stderr_log}" &
     unset XDG_ACTIVATION_TOKEN
 else
     # X11 / XWayland session → disable GPU WebRender to prevent artefacts.
@@ -544,7 +574,7 @@ else
         --kiosk \
         -no-remote \
         -profile "${_FF_PROFILE_DIR}" \
-        "${URL}" 9>&- &
+        "${URL}" 9>&- 2>"${_ff_stderr_log}" &
 fi
 FIREFOX_PID=$!
 _ff_launch_time=$(date +%s)
@@ -846,6 +876,12 @@ _ff_run_secs=$(( $(date +%s) - _ff_launch_time ))
 if [[ ${_ff_exit} -ne 0 ]] && [[ ${_ff_run_secs} -lt 10 ]]; then
     echo "kiosk-launch: WARNING Firefox crashed at startup (ran ${_ff_run_secs}s, status ${_ff_exit})" >&2
     echo "kiosk-launch: check Firefox errors with: journalctl -b _COMM=firefox" >&2
+    if [[ -n "${_ff_stderr_log:-}" ]] && [[ -s "${_ff_stderr_log}" ]]; then
+        echo "kiosk-launch: Firefox stderr output (first 30 lines):" >&2
+        head -30 "${_ff_stderr_log}" | while IFS= read -r _ffln; do
+            echo "  ${_ffln}" >&2
+        done
+    fi
 fi
 
 # ── When the browser exits, reopen the config app ─────────────────────────

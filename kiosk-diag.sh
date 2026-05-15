@@ -152,8 +152,8 @@ else
 fi
 echo ""
 
-# ── snap Firefox Wayland interface ────────────────────────────────────────
-echo "── snap Firefox Wayland interface ────────────────────────────────────"
+# ── snap Firefox interfaces ───────────────────────────────────────────────
+echo "── snap Firefox interfaces ───────────────────────────────────────────"
 if "${_diag_ff_is_snap}" && command -v snap &>/dev/null; then
     # snap-confine's 'wayland' interface plug mounts the host Wayland socket
     # inside the snap namespace and re-injects WAYLAND_DISPLAY, bypassing
@@ -168,8 +168,26 @@ if "${_diag_ff_is_snap}" && command -v snap &>/dev/null; then
         echo "     → Re-run: sudo ./install.sh"
         echo "     → Or manually: sudo snap disconnect firefox:wayland"
     fi
+
+    # The x11 interface grants Firefox access to the X11 socket (:0).
+    # If disconnected, Firefox fails with "cannot open display: :0" (exit 1).
+    _x11_state="$(snap connections firefox 2>/dev/null \
+        | awk '$1 == "x11" { print $3 }' || true)"
+    if [[ "${_x11_state}" == "-" ]]; then
+        _fail "snap Firefox x11 plug is disconnected – Firefox cannot connect to display :0 (exit 1)"
+        echo "     → Run: sudo snap connect firefox:x11"
+    elif [[ -n "${_x11_state}" ]]; then
+        _ok  "snap Firefox x11 plug connected (${_x11_state})"
+    else
+        echo "  ℹ  x11 interface not listed in snap connections (may be provided via desktop interface)"
+    fi
+
+    echo ""
+    echo "  Full snap connections for firefox:"
+    snap connections firefox 2>/dev/null | sed 's/^/    /' \
+        || echo "    (snap connections command failed)"
 else
-    echo "  ℹ  snap Firefox not detected – Wayland plug check skipped."
+    echo "  ℹ  snap Firefox not detected – interface checks skipped."
 fi
 echo ""
 
@@ -250,8 +268,17 @@ elif ! grep -q '_mm_src' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (xauth extract-by-display is a silent no-op: Mutter stores cookies as 'hostname/unix:0', not ':0'; must merge ALL entries via xauth merge)"
     echo "     Also: merge is skipped on restart when XAUTHORITY is already ~/.Xauthority."
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'env -u GDK_BACKEND' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing GDK_BACKEND suppression: if GDK_BACKEND=wayland is set in the session environment, GTK refuses to use X11 and Firefox crashes with exit 1 on the XWayland path)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'pre-launch env:' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing pre-launch environment diagnostics)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'Firefox stderr output' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing Firefox stderr capture for crash diagnostics)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check, env -u WAYLAND_DISPLAY XWayland launch, snap XWayland full Xauth merge)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (snap wayland disconnect, XWayland probe, snap native Wayland, XDG portal RequestToken with timeout, set-e XAUTHORITY block fix, liveness probe, ERR trap, snap wayland-plug runtime check, env -u WAYLAND_DISPLAY XWayland launch, snap XWayland full Xauth merge, env -u GDK_BACKEND, pre-launch env diagnostics, Firefox stderr capture)"
 fi
 echo ""
 
@@ -322,12 +349,12 @@ echo ""
 # Firefox logs its own startup errors under a separate journald identifier
 # (_COMM=firefox), distinct from the kiosk-browser.service entries above.
 # These entries are essential for diagnosing exit-status-1 startup crashes.
-echo "── Firefox process journal (last 20 lines) ──────────────────────────"
+echo "── Firefox process journal (last 30 lines) ──────────────────────────"
 if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
     if [[ -n "${KIOSK_UID}" ]]; then
         _ff_log=$(journalctl --boot --no-pager _UID="${KIOSK_UID}" _COMM=firefox \
-            2>/dev/null | tail -20)
+            2>/dev/null | tail -30)
         if [[ -n "${_ff_log}" ]]; then
             echo "${_ff_log}" | sed 's/^/  /'
         else
@@ -336,6 +363,98 @@ if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     fi
 else
     echo "  journalctl not available or kiosk user not found"
+fi
+echo ""
+
+# ── snap Firefox logs ──────────────────────────────────────────────────────
+# 'snap logs firefox' shows the snap.firefox.firefox systemd service journal,
+# which captures Firefox's own stdout/stderr before the process crashes.
+echo "── snap Firefox logs (last 30 lines) ────────────────────────────────"
+if "${_diag_ff_is_snap}" && command -v snap &>/dev/null; then
+    snap logs firefox 2>/dev/null | tail -30 | sed 's/^/  /' \
+        || echo "  (snap logs command failed – try: sudo snap logs firefox)"
+else
+    echo "  ℹ  snap Firefox not detected – snap logs skipped."
+fi
+echo ""
+
+# ── Firefox stderr log (captured by kiosk-launch.sh) ──────────────────────
+# kiosk-launch.sh redirects Firefox's stderr to a temp file in XDG_RUNTIME_DIR
+# and dumps it here after a crash.  Requires the latest kiosk-launch.sh.
+echo "── Firefox stderr log ────────────────────────────────────────────────"
+if [[ -n "${KIOSK_HOME}" ]]; then
+    KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
+    if [[ -n "${KIOSK_UID}" ]]; then
+        _ff_stderr_file="/run/user/${KIOSK_UID}/kiosk-ff-stderr.log"
+        if [[ -s "${_ff_stderr_file}" ]]; then
+            echo "  ${_ff_stderr_file} (last 30 lines):"
+            tail -30 "${_ff_stderr_file}" | sed 's/^/  /'
+        else
+            echo "  (${_ff_stderr_file} is empty or absent)"
+            echo "  Re-run sudo ./install.sh to deploy the stderr-capture update."
+        fi
+    else
+        echo "  (could not resolve UID for '${KIOSK_USER}')"
+    fi
+else
+    echo "  (kiosk home not found)"
+fi
+echo ""
+
+# ── Kiosk user session environment ────────────────────────────────────────
+# Shows the systemd user environment variables that kiosk-browser.service
+# inherits.  Key variables: DISPLAY, WAYLAND_DISPLAY, GDK_BACKEND, DBUS_*.
+echo "── Kiosk user session environment ───────────────────────────────────"
+if command -v systemctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
+    KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
+    _kiosk_env=""
+    if [[ -n "${KIOSK_UID}" ]]; then
+        _kiosk_env=$(sudo -u "${KIOSK_USER}" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${KIOSK_UID}/bus" \
+            XDG_RUNTIME_DIR="/run/user/${KIOSK_UID}" \
+            systemctl --user show-environment 2>/dev/null \
+            | grep -E '^(DISPLAY|WAYLAND_DISPLAY|GDK_BACKEND|DBUS_SESSION_BUS_ADDRESS|XDG_SESSION_TYPE|XDG_SESSION_CLASS|XAUTHORITY)=' \
+            | sort || true)
+    fi
+    if [[ -n "${_kiosk_env}" ]]; then
+        echo "${_kiosk_env}" | sed 's/^/  /'
+    else
+        echo "  (could not read systemd user environment for '${KIOSK_USER}')"
+        echo "  Try manually: sudo -u ${KIOSK_USER} XDG_RUNTIME_DIR=/run/user/${KIOSK_UID:-1000} systemctl --user show-environment"
+    fi
+else
+    echo "  (systemctl not available or kiosk user not found)"
+fi
+echo ""
+
+# ── XWayland auth entries ──────────────────────────────────────────────────
+# Shows the MIT-MAGIC-COOKIE entries in the kiosk user's ~/.Xauthority and
+# in Mutter's live XWayland auth file.  Both must contain matching cookies
+# for Firefox (inside the snap sandbox) to connect to display :0.
+echo "── XWayland auth entries ─────────────────────────────────────────────"
+if command -v xauth &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
+    _xauth_file="${KIOSK_HOME}/.Xauthority"
+    if [[ -f "${_xauth_file}" ]]; then
+        echo "  ${_xauth_file}:"
+        xauth -f "${_xauth_file}" list 2>/dev/null | sed 's/^/    /' \
+            || echo "    (xauth list failed)"
+    else
+        echo "  ${_xauth_file} does not exist"
+    fi
+    KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
+    if [[ -n "${KIOSK_UID}" ]]; then
+        _mutter_file="$(find "/run/user/${KIOSK_UID}" -maxdepth 1 -type f \
+            -name '.mutter-Xwaylandauth.*' 2>/dev/null | head -1 || true)"
+        if [[ -n "${_mutter_file}" ]]; then
+            echo "  Mutter XWayland auth file: ${_mutter_file}"
+            xauth -f "${_mutter_file}" list 2>/dev/null | sed 's/^/    /' \
+                || echo "    (xauth list failed)"
+        else
+            echo "  No .mutter-Xwaylandauth.* file in /run/user/${KIOSK_UID}"
+        fi
+    fi
+else
+    echo "  (xauth not available or kiosk user not found)"
 fi
 echo ""
 
