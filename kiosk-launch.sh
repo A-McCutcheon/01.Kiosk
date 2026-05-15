@@ -568,12 +568,15 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
                     && [[ "${_mm_src}" != "${HOME}/.Xauthority" ]] \
                     && [[ "${_mm_src}" != "${_FF_SNAP_XAUTH}" ]] \
                     && [[ -f "${_mm_src}" ]]; then
-                mkdir -p "$(dirname "${_FF_SNAP_XAUTH}")" 2>/dev/null || true
-                : > "${_FF_SNAP_XAUTH}" 2>/dev/null || true
-                xauth -f "${_FF_SNAP_XAUTH}" merge "${_mm_src}" 2>/dev/null || true
-                chmod 600 "${_FF_SNAP_XAUTH}" 2>/dev/null || true
-                export XAUTHORITY="${_FF_SNAP_XAUTH}"
-                echo "kiosk-launch: snap XWayland: Xauthority merged to ${_FF_SNAP_XAUTH}" >&2
+                if mkdir -p "$(dirname "${_FF_SNAP_XAUTH}")" 2>/dev/null \
+                        && : > "${_FF_SNAP_XAUTH}" 2>/dev/null; then
+                    xauth -f "${_FF_SNAP_XAUTH}" merge "${_mm_src}" 2>/dev/null || true
+                    chmod 600 "${_FF_SNAP_XAUTH}" 2>/dev/null || true
+                    export XAUTHORITY="${_FF_SNAP_XAUTH}"
+                    echo "kiosk-launch: snap XWayland: Xauthority merged to ${_FF_SNAP_XAUTH}" >&2
+                else
+                    echo "kiosk-launch: WARNING failed to prepare snap-readable Xauthority cache: ${_FF_SNAP_XAUTH}" >&2
+                fi
             fi
         fi
         echo "kiosk-launch: launching snap Firefox (XWayland, XDG token: ${_XDG_TOKEN:-none})" >&2
