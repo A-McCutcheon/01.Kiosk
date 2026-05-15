@@ -571,12 +571,8 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
                 # Defensive: the snap should already provide ~/snap/firefox/common/,
                 # but ensure the cache directory exists before writing the file
                 # so ad-hoc test environments do not fail on the first launch.
-                if mkdir -p "$(dirname "${_FF_SNAP_XAUTH}")" 2>/dev/null \
-                        && touch "${_FF_SNAP_XAUTH}" 2>/dev/null; then
-                    xauth -f "${_FF_SNAP_XAUTH}" merge "${_mm_src}" 2>/dev/null || true
-                    if ! chmod 600 "${_FF_SNAP_XAUTH}" 2>/dev/null; then
-                        echo "kiosk-launch: WARNING failed to chmod 600 ${_FF_SNAP_XAUTH}" >&2
-                    fi
+                if mkdir -p "$(dirname "${_FF_SNAP_XAUTH}")" 2>/dev/null; then
+                    ( umask 077; xauth -f "${_FF_SNAP_XAUTH}" merge "${_mm_src}" 2>/dev/null ) || true
                     export XAUTHORITY="${_FF_SNAP_XAUTH}"
                     echo "kiosk-launch: snap XWayland: Xauthority merged to ${_FF_SNAP_XAUTH}" >&2
                 else
