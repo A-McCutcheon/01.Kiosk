@@ -31,8 +31,8 @@ echo "║       Kiosk Diagnostic Report                ║"
 echo "╚══════════════════════════════════════════════╝"
 echo "  Kiosk user : ${KIOSK_USER}"
 echo "  Fix the first FAIL in '${TITLE_SNAP_FIREFOX_INTERFACES}',"
-echo "  '${TITLE_INSTALLED_SCRIPT_FRESHNESS}', or '${TITLE_SERVICE_RESTART_CHECK}'"
-echo "  before spending time on the later log and environment sections."
+echo "  '${TITLE_INSTALLED_SCRIPT_FRESHNESS}', or '${TITLE_SERVICE_RESTART_CHECK}' before"
+echo "  spending time on the later log and environment sections."
 echo ""
 echo "  Recommended diagnosis order:"
 echo "    1. ${TITLE_SNAP_FIREFOX_INTERFACES}"
@@ -75,10 +75,11 @@ _fail() {
 }
 _section_fail_count() { echo "${SECTION_FAILS[$1]:-0}"; }
 _section_status_line() {
-    local _key="$1" _count
+    local _key="$1" _count _label
     _count=$(_section_fail_count "${_key}")
     if [[ "${_count}" -gt 0 ]]; then
-        echo "    ✗ ${SECTION_TITLES[${_key}]} (${_count} failure(s))"
+        [[ "${_count}" -eq 1 ]] && _label="failure" || _label="failures"
+        echo "    ✗ ${SECTION_TITLES[${_key}]} (${_count} ${_label})"
     else
         echo "    ✓ ${SECTION_TITLES[${_key}]}"
     fi
