@@ -225,7 +225,7 @@ fi
 echo ""
 
 # ── snap Firefox interfaces ───────────────────────────────────────────────
-_begin_section "snap_firefox_interfaces" "snap Firefox interfaces" \
+_begin_section "snap_firefox_interfaces" "${TITLE_SNAP_FIREFOX_INTERFACES}" \
     "── snap Firefox interfaces ───────────────────────────────────────────"
 if "${_diag_ff_is_snap}" && command -v snap &>/dev/null; then
     # snap-confine's 'wayland' interface plug mounts the host Wayland socket
@@ -265,7 +265,7 @@ fi
 echo ""
 
 # ── Installed script freshness ────────────────────────────────────────────
-_begin_section "installed_script_freshness" "Installed script freshness" \
+_begin_section "installed_script_freshness" "${TITLE_INSTALLED_SCRIPT_FRESHNESS}" \
     "── Installed script freshness ────────────────────────────────────────"
 INSTALLED_LAUNCH="/opt/kiosk/kiosk-launch.sh"
 if [[ ! -f "${INSTALLED_LAUNCH}" ]]; then
@@ -377,7 +377,7 @@ echo ""
 # new code ("FF_USING_XWAYLAND=" in the post-XDG-token state log), the current
 # code is running.  If the freshness check passed but the journal doesn't have
 # the new log line, the service was not restarted after the last install.
-_begin_section "service_restart_check" "Service restart check" \
+_begin_section "service_restart_check" "${TITLE_SERVICE_RESTART_CHECK}" \
     "── Service restart check ─────────────────────────────────────────────"
 if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
@@ -421,7 +421,7 @@ echo ""
 # Use --boot (not --since "1 hour ago") so that all log entries from the
 # current boot session are visible — the service may have started at login
 # time (potentially hours ago) and --since truncates those early entries.
-_begin_section "kiosk_browser_service_journal" "Kiosk browser service journal" \
+_begin_section "kiosk_browser_service_journal" "${TITLE_KIOSK_BROWSER_SERVICE_JOURNAL}" \
     "── Kiosk browser service journal (last 100 lines, this boot) ────────"
 if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
@@ -440,7 +440,7 @@ echo ""
 # Firefox logs its own startup errors under a separate journald identifier
 # (_COMM=firefox), distinct from the kiosk-browser.service entries above.
 # These entries are essential for diagnosing exit-status-1 startup crashes.
-_begin_section "firefox_process_journal" "Firefox process journal" \
+_begin_section "firefox_process_journal" "${TITLE_FIREFOX_PROCESS_JOURNAL}" \
     "── Firefox process journal (last 50 lines) ──────────────────────────"
 if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
@@ -461,7 +461,7 @@ echo ""
 # ── snap Firefox logs ──────────────────────────────────────────────────────
 # 'snap logs firefox' shows the snap.firefox.firefox systemd service journal,
 # which captures Firefox's own stdout/stderr before the process crashes.
-_begin_section "snap_firefox_logs" "snap Firefox logs" \
+_begin_section "snap_firefox_logs" "${TITLE_SNAP_FIREFOX_LOGS}" \
     "── snap Firefox logs (last 50 lines) ────────────────────────────────"
 if "${_diag_ff_is_snap}" && command -v snap &>/dev/null; then
     snap logs firefox 2>/dev/null | tail -50 | sed 's/^/  /' \
@@ -474,7 +474,7 @@ echo ""
 # ── Firefox stderr log (captured by kiosk-launch.sh) ──────────────────────
 # kiosk-launch.sh redirects Firefox's stderr to a temp file in XDG_RUNTIME_DIR
 # and dumps it here after a crash.  Requires the latest kiosk-launch.sh.
-_begin_section "firefox_stderr_log" "Firefox stderr log" \
+_begin_section "firefox_stderr_log" "${TITLE_FIREFOX_STDERR_LOG}" \
     "── Firefox stderr log ────────────────────────────────────────────────"
 if [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
@@ -498,7 +498,7 @@ echo ""
 # ── Kiosk user session environment ────────────────────────────────────────
 # Shows the systemd user environment variables that kiosk-browser.service
 # inherits.  Key variables: DISPLAY, WAYLAND_DISPLAY, GDK_BACKEND, DBUS_*.
-_begin_section "kiosk_user_session_environment" "Kiosk user session environment" \
+_begin_section "kiosk_user_session_environment" "${TITLE_KIOSK_USER_SESSION_ENVIRONMENT}" \
     "── Kiosk user session environment ───────────────────────────────────"
 if command -v systemctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
@@ -526,7 +526,7 @@ echo ""
 # Shows the MIT-MAGIC-COOKIE entries in the snap-readable Xauth cache and in
 # Mutter's live XWayland auth file.  Both must contain matching cookies for
 # Firefox (inside the snap sandbox) to connect to display :0.
-_begin_section "xwayland_auth_entries" "XWayland auth entries" \
+_begin_section "xwayland_auth_entries" "${TITLE_XWAYLAND_AUTH_ENTRIES}" \
     "── XWayland auth entries ─────────────────────────────────────────────"
 if command -v xauth &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     _xauth_file="${KIOSK_HOME}/snap/firefox/common/kiosk-xauth"
