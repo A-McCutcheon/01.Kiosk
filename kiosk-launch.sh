@@ -472,7 +472,11 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
     # XAUTHORITY: export Mutter's XWayland auth file so that xdotool/wmctrl
     # (running in the activation subshell) can authenticate with XWayland even
     # when XAUTHORITY is not propagated from the GNOME session into this service.
-    if [[ -z "${XAUTHORITY:-}" ]]; then
+    #
+    # Also handle stale inherited values: systemd user environments can retain an
+    # old XAUTHORITY path from a previous session, and that file no longer exists
+    # after logout/relogin.  In that case Firefox fails with "cannot open display: :0".
+    if [[ -z "${XAUTHORITY:-}" || ! -f "${XAUTHORITY:-}" ]]; then
         _xauth_rt="${XDG_RUNTIME_DIR:-}"
         # XDG_RUNTIME_DIR is always set in GNOME systemd user services; the
         # fallback constructs the standard path only after validating the UID
@@ -557,7 +561,8 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
             _mm_src="${XAUTHORITY:-}"
             if [[ "${_mm_src}" == "${HOME}/.Xauthority" ]] \
                     || [[ "${_mm_src}" == "${_FF_SNAP_XAUTH}" ]] \
-                    || [[ -z "${_mm_src}" ]]; then
+                    || [[ -z "${_mm_src}" ]] \
+                    || [[ ! -f "${_mm_src}" ]]; then
                 _mm_rt="${XDG_RUNTIME_DIR:-}"
                 if [[ -z "${_mm_rt}" ]]; then
                     _mm_uid="$(id -u 2>/dev/null || true)"
