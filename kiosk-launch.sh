@@ -542,9 +542,8 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
         # DISPLAY: the launcher service may not inherit DISPLAY even though the
         # XWayland probe above succeeded via its ${DISPLAY:-:0} fallback.  Snap
         # Firefox still needs DISPLAY exported at exec time to select X11/XWayland.
-        _ff_launch_display="${DISPLAY:-:0}"
         if [[ -z "${DISPLAY:-}" ]]; then
-            export DISPLAY="${_ff_launch_display}"
+            export DISPLAY=":0"
             echo "kiosk-launch: XWayland launch DISPLAY fallback applied: ${DISPLAY}" >&2
         fi
         if command -v xauth &>/dev/null; then
