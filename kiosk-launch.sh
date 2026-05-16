@@ -538,6 +538,15 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
         # Fix: merge the cookie into a non-dot file under ~/snap/firefox/common/
         # (snap's $SNAP_USER_COMMON) and update XAUTHORITY so the snap launcher
         # passes a snap-readable path into the sandbox.
+        #
+        # DISPLAY: the launcher service may not inherit DISPLAY even though the
+        # XWayland probe above succeeded via its ${DISPLAY:-:0} fallback.  Snap
+        # Firefox still needs DISPLAY exported at exec time to select X11/XWayland.
+        _ff_launch_display="${DISPLAY:-:0}"
+        if [[ -z "${DISPLAY:-}" ]]; then
+            export DISPLAY="${_ff_launch_display}"
+            echo "kiosk-launch: XWayland launch DISPLAY fallback applied: ${DISPLAY}" >&2
+        fi
         if command -v xauth &>/dev/null; then
             # Find the live Mutter XWayland auth file.  When XAUTHORITY is
             # already the snap-readable cache path (or a leftover ~/.Xauthority

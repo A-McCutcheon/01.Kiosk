@@ -258,6 +258,10 @@ elif ! grep -q '_ff_wayland_slot' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     echo "     Without it the activation subshell uses 3-retry Wayland poll even when snap"
     echo "     Firefox is on XWayland, so the Firefox window is never found and never appears."
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'XWayland launch DISPLAY fallback applied' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing DISPLAY fallback on the snap XWayland launch path)"
+    echo "     The user service can probe XWayland via :0 but still launch Firefox with DISPLAY unset."
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 elif ! grep -q 'env -u WAYLAND_DISPLAY' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing env -u WAYLAND_DISPLAY on XWayland launch path)"
     echo "     snap's 'desktop' interface exposes WAYLAND_DISPLAY inside the snap namespace even"
