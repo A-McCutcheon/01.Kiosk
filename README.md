@@ -166,7 +166,7 @@ The fastest diagnosis flow is:
    - `Firefox process journal`
    - `snap Firefox logs`
    - `Firefox stderr log`
-3. Only if the failure is still display-related (for example `cannot open display: :0`),
+3. Only if the failure is still display-related (e.g., `cannot open display: :0`),
    compare:
    - `Kiosk user session environment`
    - `XWayland auth entries`

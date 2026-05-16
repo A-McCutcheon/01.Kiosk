@@ -572,7 +572,7 @@ if [[ ${FAIL} -eq 0 ]]; then
     _section_status_line "firefox_process_journal"
     _section_status_line "snap_firefox_logs"
     _section_status_line "firefox_stderr_log"
-    echo "  If those logs still point at display access (for example:"
+    echo "  If those logs still point at display access (e.g.,"
     echo "  'cannot open display: :0'), compare these next:"
     _section_status_line "kiosk_user_session_environment"
     _section_status_line "xwayland_auth_entries"
