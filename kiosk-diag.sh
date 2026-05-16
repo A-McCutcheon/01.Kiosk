@@ -8,27 +8,6 @@
 #   sudo ./kiosk-diag.sh [kiosk-username]
 
 KIOSK_USER="${1:-kiosk}"
-
-echo "╔══════════════════════════════════════════════╗"
-echo "║       Kiosk Diagnostic Report                ║"
-echo "╚══════════════════════════════════════════════╝"
-echo "  Kiosk user : ${KIOSK_USER}"
-echo "  Fix the first FAIL in 'snap Firefox interfaces',"
-echo "  'Installed script freshness', or 'Service restart check'"
-echo "  before spending time on the later log and environment sections."
-echo ""
-echo "  Recommended diagnosis order:"
-echo "    1. snap Firefox interfaces"
-echo "    2. Installed script freshness"
-echo "    3. Service restart check"
-echo "    4. Kiosk browser service journal"
-echo "    5. Firefox process journal"
-echo "    6. snap Firefox logs"
-echo "    7. Firefox stderr log"
-echo "    8. Kiosk user session environment"
-echo "    9. XWayland auth entries"
-echo ""
-
 FAIL=0
 CURRENT_SECTION=""
 FIRST_PASS_FAIL_SECTION=""
@@ -36,7 +15,37 @@ FIRST_PASS_FAIL_SECTION=""
 # earliest actionable part of the report instead of forcing them to scan
 # the whole output manually.
 declare -A SECTION_FAILS=()
-declare -A SECTION_TITLES=()
+declare -A SECTION_TITLES=(
+    [snap_firefox_interfaces]="snap Firefox interfaces"
+    [installed_script_freshness]="Installed script freshness"
+    [service_restart_check]="Service restart check"
+    [kiosk_browser_service_journal]="Kiosk browser service journal"
+    [firefox_process_journal]="Firefox process journal"
+    [snap_firefox_logs]="snap Firefox logs"
+    [firefox_stderr_log]="Firefox stderr log"
+    [kiosk_user_session_environment]="Kiosk user session environment"
+    [xwayland_auth_entries]="XWayland auth entries"
+)
+
+echo "╔══════════════════════════════════════════════╗"
+echo "║       Kiosk Diagnostic Report                ║"
+echo "╚══════════════════════════════════════════════╝"
+echo "  Kiosk user : ${KIOSK_USER}"
+echo "  Fix the first FAIL in '${SECTION_TITLES[snap_firefox_interfaces]}',"
+echo "  '${SECTION_TITLES[installed_script_freshness]}', or '${SECTION_TITLES[service_restart_check]}'"
+echo "  before spending time on the later log and environment sections."
+echo ""
+echo "  Recommended diagnosis order:"
+echo "    1. ${SECTION_TITLES[snap_firefox_interfaces]}"
+echo "    2. ${SECTION_TITLES[installed_script_freshness]}"
+echo "    3. ${SECTION_TITLES[service_restart_check]}"
+echo "    4. ${SECTION_TITLES[kiosk_browser_service_journal]}"
+echo "    5. ${SECTION_TITLES[firefox_process_journal]}"
+echo "    6. ${SECTION_TITLES[snap_firefox_logs]}"
+echo "    7. ${SECTION_TITLES[firefox_stderr_log]}"
+echo "    8. ${SECTION_TITLES[kiosk_user_session_environment]}"
+echo "    9. ${SECTION_TITLES[xwayland_auth_entries]}"
+echo ""
 
 _begin_section() {
     CURRENT_SECTION="$1"
@@ -577,7 +586,7 @@ else
     _section_status_line "service_restart_check"
     echo ""
     if [[ -n "${FIRST_PASS_FAIL_SECTION}" ]]; then
-        echo "  First section to fix before reading logs: ${SECTION_TITLES[${FIRST_PASS_FAIL_SECTION}]}"
+        echo "  First section to fix before reading logs: ${SECTION_TITLES[$FIRST_PASS_FAIL_SECTION]}"
         case "${FIRST_PASS_FAIL_SECTION}" in
             snap_firefox_interfaces)
                 echo "  Interpretation: snap connection problem."
