@@ -13,14 +13,69 @@ echo "╔═══════════════════════�
 echo "║       Kiosk Diagnostic Report                ║"
 echo "╚══════════════════════════════════════════════╝"
 echo "  Kiosk user : ${KIOSK_USER}"
+echo "  Fix the first FAIL in interfaces / freshness / restart before"
+echo "  spending time on the later log and environment sections."
+echo ""
+echo "  Recommended diagnosis order:"
+echo "    1. snap Firefox interfaces"
+echo "    2. Installed script freshness"
+echo "    3. Service restart check"
+echo "    4. Kiosk browser service journal"
+echo "    5. Firefox process journal"
+echo "    6. snap Firefox logs"
+echo "    7. Firefox stderr log"
+echo "    8. Kiosk user session environment"
+echo "    9. XWayland auth entries"
 echo ""
 
 FAIL=0
-_ok()   { echo "  ✓  $1"; }
-_fail() { echo "  ✗  $1"; (( FAIL++ )) || true; }
+CURRENT_SECTION=""
+FIRST_HARD_FAIL_SECTION=""
+declare -A SECTION_FAILS=()
+declare -A SECTION_TITLES=()
+
+_begin_section() {
+    CURRENT_SECTION="$1"
+    SECTION_TITLES["${CURRENT_SECTION}"]="$2"
+    echo "$3"
+}
+_is_hard_section() {
+    case "$1" in
+        snap_firefox_interfaces|installed_script_freshness|service_restart_check|\
+        kiosk_browser_service_journal|firefox_process_journal|snap_firefox_logs|\
+        firefox_stderr_log|kiosk_user_session_environment|xwayland_auth_entries)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+_ok() { echo "  ✓  $1"; }
+_fail() {
+    echo "  ✗  $1"
+    (( FAIL++ )) || true
+    if [[ -n "${CURRENT_SECTION}" ]]; then
+        (( SECTION_FAILS["${CURRENT_SECTION}"] += 1 )) || true
+        if _is_hard_section "${CURRENT_SECTION}" && [[ -z "${FIRST_HARD_FAIL_SECTION}" ]]; then
+            FIRST_HARD_FAIL_SECTION="${CURRENT_SECTION}"
+        fi
+    fi
+}
+_section_fail_count() { echo "${SECTION_FAILS[$1]:-0}"; }
+_section_status_line() {
+    local _key="$1" _count
+    _count=$(_section_fail_count "${_key}")
+    if [[ "${_count}" -gt 0 ]]; then
+        echo "    ✗ ${SECTION_TITLES[${_key}]} (${_count} failure(s))"
+    else
+        echo "    ✓ ${SECTION_TITLES[${_key}]}"
+    fi
+}
 
 # ── GDM3 ──────────────────────────────────────────────────────────────────
-echo "── GDM3 autologin ────────────────────────────────────────────────────"
+_begin_section "gdm3_autologin" "GDM3 autologin" \
+    "── GDM3 autologin ────────────────────────────────────────────────────"
 if [[ ! -f /etc/gdm3/custom.conf ]]; then
     _fail "/etc/gdm3/custom.conf not found (GDM3 may not be installed)"
 else
@@ -55,7 +110,8 @@ fi
 echo ""
 
 # ── Kiosk user ────────────────────────────────────────────────────────────
-echo "── Kiosk user ────────────────────────────────────────────────────────"
+_begin_section "kiosk_user" "Kiosk user" \
+    "── Kiosk user ────────────────────────────────────────────────────────"
 if id "${KIOSK_USER}" &>/dev/null; then
     _ok "User '${KIOSK_USER}' exists"
     KIOSK_HOME="$(getent passwd "${KIOSK_USER}" | cut -d: -f6)"
@@ -69,7 +125,8 @@ fi
 echo ""
 
 # ── GNOME autostart ───────────────────────────────────────────────────────
-echo "── GNOME autostart ───────────────────────────────────────────────────"
+_begin_section "gnome_autostart" "GNOME autostart" \
+    "── GNOME autostart ───────────────────────────────────────────────────"
 if [[ -n "${KIOSK_HOME}" ]]; then
     [[ -f "${KIOSK_HOME}/.config/autostart/kiosk.desktop" ]] \
         && _ok  "autostart/kiosk.desktop present" \
@@ -82,7 +139,8 @@ fi
 echo ""
 
 # ── Installed scripts ─────────────────────────────────────────────────────
-echo "── Installed kiosk scripts ───────────────────────────────────────────"
+_begin_section "installed_kiosk_scripts" "Installed kiosk scripts" \
+    "── Installed kiosk scripts ───────────────────────────────────────────"
 for f in kiosk-launch.sh kiosk-break.sh kiosk-exit-overlay.py kiosk-config/config_app.py; do
     [[ -f "/opt/kiosk/${f}" ]] \
         && _ok  "/opt/kiosk/${f}" \
@@ -91,7 +149,8 @@ done
 echo ""
 
 # ── Required runtime tools ────────────────────────────────────────────────
-echo "── Required runtime tools ────────────────────────────────────────────"
+_begin_section "required_runtime_tools" "Required runtime tools" \
+    "── Required runtime tools ────────────────────────────────────────────"
 for tool in xdotool wmctrl gdbus xauth; do
     if command -v "${tool}" &>/dev/null; then
         _ok  "${tool} found ($(command -v "${tool}"))"
@@ -102,7 +161,8 @@ done
 echo ""
 
 # ── Firefox policies ──────────────────────────────────────────────────────
-echo "── Firefox rendering policies ────────────────────────────────────────"
+_begin_section "firefox_rendering_policies" "Firefox rendering policies" \
+    "── Firefox rendering policies ────────────────────────────────────────"
 FIREFOX_POLICY="/etc/firefox/policies/policies.json"
 if [[ ! -f "${FIREFOX_POLICY}" ]]; then
     _fail "${FIREFOX_POLICY} missing – re-run: sudo ./install.sh"
@@ -115,7 +175,8 @@ fi
 echo ""
 
 # ── Firefox kiosk profile ─────────────────────────────────────────────────
-echo "── Firefox kiosk profile ─────────────────────────────────────────────"
+_begin_section "firefox_kiosk_profile" "Firefox kiosk profile" \
+    "── Firefox kiosk profile ─────────────────────────────────────────────"
 # Mirror kiosk-launch.sh: detect snap Firefox so we check the correct
 # profile path.  Snap confinement's 'home' interface excludes dot-dirs
 # (e.g. ~/.config/), so snap Firefox ignores -profile paths there and
@@ -153,7 +214,8 @@ fi
 echo ""
 
 # ── snap Firefox interfaces ───────────────────────────────────────────────
-echo "── snap Firefox interfaces ───────────────────────────────────────────"
+_begin_section "snap_firefox_interfaces" "snap Firefox interfaces" \
+    "── snap Firefox interfaces ───────────────────────────────────────────"
 if "${_diag_ff_is_snap}" && command -v snap &>/dev/null; then
     # snap-confine's 'wayland' interface plug mounts the host Wayland socket
     # inside the snap namespace and re-injects WAYLAND_DISPLAY, bypassing
@@ -192,7 +254,8 @@ fi
 echo ""
 
 # ── Installed script freshness ────────────────────────────────────────────
-echo "── Installed script freshness ────────────────────────────────────────"
+_begin_section "installed_script_freshness" "Installed script freshness" \
+    "── Installed script freshness ────────────────────────────────────────"
 INSTALLED_LAUNCH="/opt/kiosk/kiosk-launch.sh"
 if [[ ! -f "${INSTALLED_LAUNCH}" ]]; then
     _fail "${INSTALLED_LAUNCH} missing – re-run: sudo ./install.sh"
@@ -303,7 +366,8 @@ echo ""
 # new code ("FF_USING_XWAYLAND=" in the post-XDG-token state log), the current
 # code is running.  If the freshness check passed but the journal doesn't have
 # the new log line, the service was not restarted after the last install.
-echo "── Service restart check ─────────────────────────────────────────────"
+_begin_section "service_restart_check" "Service restart check" \
+    "── Service restart check ─────────────────────────────────────────────"
 if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
     _new_code_running=false
@@ -330,7 +394,8 @@ fi
 echo ""
 
 # ── GDM3 journal ──────────────────────────────────────────────────────────
-echo "── GDM3 recent journal (last 30 lines) ───────────────────────────────"
+_begin_section "gdm3_recent_journal" "GDM3 recent journal" \
+    "── GDM3 recent journal (last 30 lines) ───────────────────────────────"
 if command -v journalctl &>/dev/null; then
     journalctl -u gdm3 --since "1 hour ago" --no-pager 2>/dev/null | tail -30 | sed 's/^/  /' \
         || echo "  (Could not read GDM3 journal – try running as root)"
@@ -345,7 +410,8 @@ echo ""
 # Use --boot (not --since "1 hour ago") so that all log entries from the
 # current boot session are visible — the service may have started at login
 # time (potentially hours ago) and --since truncates those early entries.
-echo "── Kiosk browser service journal (last 100 lines, this boot) ────────"
+_begin_section "kiosk_browser_service_journal" "Kiosk browser service journal" \
+    "── Kiosk browser service journal (last 100 lines, this boot) ────────"
 if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
     if [[ -n "${KIOSK_UID}" ]]; then
@@ -363,7 +429,8 @@ echo ""
 # Firefox logs its own startup errors under a separate journald identifier
 # (_COMM=firefox), distinct from the kiosk-browser.service entries above.
 # These entries are essential for diagnosing exit-status-1 startup crashes.
-echo "── Firefox process journal (last 50 lines) ──────────────────────────"
+_begin_section "firefox_process_journal" "Firefox process journal" \
+    "── Firefox process journal (last 50 lines) ──────────────────────────"
 if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
     if [[ -n "${KIOSK_UID}" ]]; then
@@ -383,7 +450,8 @@ echo ""
 # ── snap Firefox logs ──────────────────────────────────────────────────────
 # 'snap logs firefox' shows the snap.firefox.firefox systemd service journal,
 # which captures Firefox's own stdout/stderr before the process crashes.
-echo "── snap Firefox logs (last 50 lines) ────────────────────────────────"
+_begin_section "snap_firefox_logs" "snap Firefox logs" \
+    "── snap Firefox logs (last 50 lines) ────────────────────────────────"
 if "${_diag_ff_is_snap}" && command -v snap &>/dev/null; then
     snap logs firefox 2>/dev/null | tail -50 | sed 's/^/  /' \
         || echo "  (snap logs command failed – try: sudo snap logs firefox)"
@@ -395,7 +463,8 @@ echo ""
 # ── Firefox stderr log (captured by kiosk-launch.sh) ──────────────────────
 # kiosk-launch.sh redirects Firefox's stderr to a temp file in XDG_RUNTIME_DIR
 # and dumps it here after a crash.  Requires the latest kiosk-launch.sh.
-echo "── Firefox stderr log ────────────────────────────────────────────────"
+_begin_section "firefox_stderr_log" "Firefox stderr log" \
+    "── Firefox stderr log ────────────────────────────────────────────────"
 if [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
     if [[ -n "${KIOSK_UID}" ]]; then
@@ -418,7 +487,8 @@ echo ""
 # ── Kiosk user session environment ────────────────────────────────────────
 # Shows the systemd user environment variables that kiosk-browser.service
 # inherits.  Key variables: DISPLAY, WAYLAND_DISPLAY, GDK_BACKEND, DBUS_*.
-echo "── Kiosk user session environment ───────────────────────────────────"
+_begin_section "kiosk_user_session_environment" "Kiosk user session environment" \
+    "── Kiosk user session environment ───────────────────────────────────"
 if command -v systemctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
     _kiosk_env=""
@@ -445,7 +515,8 @@ echo ""
 # Shows the MIT-MAGIC-COOKIE entries in the snap-readable Xauth cache and in
 # Mutter's live XWayland auth file.  Both must contain matching cookies for
 # Firefox (inside the snap sandbox) to connect to display :0.
-echo "── XWayland auth entries ─────────────────────────────────────────────"
+_begin_section "xwayland_auth_entries" "XWayland auth entries" \
+    "── XWayland auth entries ─────────────────────────────────────────────"
 if command -v xauth &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     _xauth_file="${KIOSK_HOME}/snap/firefox/common/kiosk-xauth"
     if [[ -f "${_xauth_file}" ]]; then
@@ -484,9 +555,39 @@ echo "║   Diagnostic Summary                         ║"
 echo "╚══════════════════════════════════════════════╝"
 if [[ ${FAIL} -eq 0 ]]; then
     echo "  All checks passed."
-    echo "  If autologin still does not work, review the GDM3 journal above"
-    echo "  for session startup errors, then reboot and try again."
+    echo "  Interfaces / freshness / restart passed."
+    echo "  If Firefox still does not appear, read the sections in this order:"
+    _section_status_line "kiosk_browser_service_journal"
+    _section_status_line "firefox_process_journal"
+    _section_status_line "snap_firefox_logs"
+    _section_status_line "firefox_stderr_log"
+    echo "  If those logs still point at display access (for example:"
+    echo "  'cannot open display: :0'), compare these next:"
+    _section_status_line "kiosk_user_session_environment"
+    _section_status_line "xwayland_auth_entries"
 else
-    echo "  ${FAIL} problem(s) found. Re-run:  sudo ./install.sh"
+    echo "  ${FAIL} problem(s) found."
+    echo ""
+    echo "  Hard-failure triage:"
+    _section_status_line "snap_firefox_interfaces"
+    _section_status_line "installed_script_freshness"
+    _section_status_line "service_restart_check"
+    echo ""
+    if [[ -n "${FIRST_HARD_FAIL_SECTION}" ]]; then
+        echo "  First hard-failure section to fix: ${SECTION_TITLES[${FIRST_HARD_FAIL_SECTION}]}"
+        case "${FIRST_HARD_FAIL_SECTION}" in
+            snap_firefox_interfaces)
+                echo "  Interpretation: snap connection problem."
+                echo "  Fix the x11 / wayland interface state first, then re-run kiosk-diag.sh."
+                ;;
+            installed_script_freshness|service_restart_check)
+                echo "  Interpretation: deployment/runtime mismatch."
+                echo "  Re-run sudo ./install.sh or restart the kiosk service, then re-run kiosk-diag.sh."
+                ;;
+        esac
+    else
+        echo "  The earliest hard-failure sections passed."
+        echo "  Use the journals first, then Firefox stderr / snap logs, then environment and XWayland auth."
+    fi
 fi
 echo ""
