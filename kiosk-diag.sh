@@ -13,8 +13,9 @@ echo "╔═══════════════════════�
 echo "║       Kiosk Diagnostic Report                ║"
 echo "╚══════════════════════════════════════════════╝"
 echo "  Kiosk user : ${KIOSK_USER}"
-echo "  Fix the first FAIL in interfaces / freshness / restart before"
-echo "  spending time on the later log and environment sections."
+echo "  Fix the first FAIL in 'snap Firefox interfaces',"
+echo "  'Installed script freshness', or 'Service restart check'"
+echo "  before spending time on the later log and environment sections."
 echo ""
 echo "  Recommended diagnosis order:"
 echo "    1. snap Firefox interfaces"
@@ -30,7 +31,10 @@ echo ""
 
 FAIL=0
 CURRENT_SECTION=""
-FIRST_HARD_FAIL_SECTION=""
+FIRST_PASS_FAIL_SECTION=""
+# Track failures per section so the summary can point operators at the
+# earliest actionable part of the report instead of forcing them to scan
+# the whole output manually.
 declare -A SECTION_FAILS=()
 declare -A SECTION_TITLES=()
 
@@ -39,11 +43,10 @@ _begin_section() {
     SECTION_TITLES["${CURRENT_SECTION}"]="$2"
     echo "$3"
 }
-_is_hard_section() {
+_is_first_pass_section() {
     case "$1" in
-        snap_firefox_interfaces|installed_script_freshness|service_restart_check|\
-        kiosk_browser_service_journal|firefox_process_journal|snap_firefox_logs|\
-        firefox_stderr_log|kiosk_user_session_environment|xwayland_auth_entries)
+        # Fix these before reading the later journal / env / Xauth sections.
+        snap_firefox_interfaces|installed_script_freshness|service_restart_check)
             return 0
             ;;
         *)
@@ -57,8 +60,8 @@ _fail() {
     (( FAIL++ )) || true
     if [[ -n "${CURRENT_SECTION}" ]]; then
         (( SECTION_FAILS["${CURRENT_SECTION}"] += 1 )) || true
-        if _is_hard_section "${CURRENT_SECTION}" && [[ -z "${FIRST_HARD_FAIL_SECTION}" ]]; then
-            FIRST_HARD_FAIL_SECTION="${CURRENT_SECTION}"
+        if _is_first_pass_section "${CURRENT_SECTION}" && [[ -z "${FIRST_PASS_FAIL_SECTION}" ]]; then
+            FIRST_PASS_FAIL_SECTION="${CURRENT_SECTION}"
         fi
     fi
 }
@@ -568,14 +571,14 @@ if [[ ${FAIL} -eq 0 ]]; then
 else
     echo "  ${FAIL} problem(s) found."
     echo ""
-    echo "  Hard-failure triage:"
+    echo "  First-pass triage:"
     _section_status_line "snap_firefox_interfaces"
     _section_status_line "installed_script_freshness"
     _section_status_line "service_restart_check"
     echo ""
-    if [[ -n "${FIRST_HARD_FAIL_SECTION}" ]]; then
-        echo "  First hard-failure section to fix: ${SECTION_TITLES[${FIRST_HARD_FAIL_SECTION}]}"
-        case "${FIRST_HARD_FAIL_SECTION}" in
+    if [[ -n "${FIRST_PASS_FAIL_SECTION}" ]]; then
+        echo "  First section to fix before reading logs: ${SECTION_TITLES[${FIRST_PASS_FAIL_SECTION}]}"
+        case "${FIRST_PASS_FAIL_SECTION}" in
             snap_firefox_interfaces)
                 echo "  Interpretation: snap connection problem."
                 echo "  Fix the x11 / wayland interface state first, then re-run kiosk-diag.sh."
