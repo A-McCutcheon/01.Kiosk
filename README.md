@@ -155,6 +155,31 @@ Run the built-in diagnostic script to check all autologin prerequisites in one s
 sudo /opt/kiosk/kiosk-diag.sh
 ```
 
+The fastest diagnosis flow is:
+
+1. Fix the first **FAIL** in:
+   - `snap Firefox interfaces`
+   - `Installed script freshness`
+   - `Service restart check`
+2. Then read, in order:
+   - `Kiosk browser service journal`
+   - `Firefox process journal`
+   - `snap Firefox logs`
+   - `Firefox stderr log`
+3. Only if the failure is still display-related (e.g., `cannot open display: :0`),
+   compare:
+   - `Kiosk user session environment`
+   - `XWayland auth entries`
+
+Use the sections this way:
+
+- **snap Firefox interfaces** → rules out disconnected `x11` or still-connected `wayland`
+- **Installed script freshness** / **Service restart check** → rules out “new file installed, old service still running”
+- **Kiosk browser service journal** → shows which launch branch ran (`pre-launch env`, `post-XDG-token state`, `ERR exit at line`, `XWayland socket`, `Mutter Xauth files`)
+- **Firefox process journal** / **snap Firefox logs** / **Firefox stderr log** → expose the actual startup crash
+- **Kiosk user session environment** → shows whether Firefox inherited the wrong Wayland/XWayland variables
+- **XWayland auth entries** → verifies the snap-readable cookie cache matches Mutter's live XWayland auth file
+
 The script checks:
 - `/etc/gdm3/custom.conf` for `AutomaticLoginEnable=true` and `AutomaticLogin=kiosk`
 - That the kiosk OS user and home directory exist

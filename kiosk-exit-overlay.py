@@ -28,6 +28,16 @@ import signal
 import subprocess
 import sys
 
+# Detect Wayland session at module load time.
+# xdotool is an X11 tool; on a native Wayland session it cannot find Wayland-
+# native client windows (Firefox runs as a native Wayland client on GNOME).
+# When running under Wayland we skip the xdotool window-class search and rely
+# solely on os.kill process-liveness checks instead.
+_WAYLAND_SESSION = (
+    os.environ.get('XDG_SESSION_TYPE', '').lower() == 'wayland'
+    or bool(os.environ.get('WAYLAND_DISPLAY'))
+)
+
 # Locate kiosk-break.sh relative to this file, falling back to /opt/kiosk
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BREAK_SCRIPT = os.path.join(_SCRIPT_DIR, 'kiosk-break.sh')
@@ -47,6 +57,11 @@ _BROWSER_POLL_MS = 500
 # button always appears even when xdotool cannot detect the window class).
 # 60 polls × 500 ms = 30 seconds.
 _BROWSER_POLL_MAX = 60
+# On Wayland we rely on process liveness rather than xdotool window detection.
+# Wait this many polls before showing, to give Firefox time to render its
+# first frame before the overlay appears on top of it.
+# 10 polls × 500 ms = 5 seconds.
+_WAYLAND_MIN_POLLS = 10
 
 
 class ExitOverlay(Gtk.Window):
@@ -146,6 +161,11 @@ class ExitOverlay(Gtk.Window):
             return None  # process gone
         except PermissionError:
             pass  # process exists but owned by another user; continue
+        # On Wayland, xdotool is an X11 tool and cannot detect native Wayland
+        # windows.  The os.kill check above already confirmed the browser
+        # process is alive; that is sufficient — treat it as visible.
+        if _WAYLAND_SESSION:
+            return True
         # Use xdotool to confirm the window is mapped.
         # Firefox's UI window belongs to a child process, not the launcher PID,
         # so --pid never matches the kiosk window.  We search by window class
@@ -180,6 +200,11 @@ class ExitOverlay(Gtk.Window):
         window is on screen; quits if the process has already gone.  After
         _BROWSER_POLL_MAX polls the overlay is shown unconditionally so it
         always appears even when xdotool cannot detect the window class.
+
+        On Wayland, _browser_window_visible() returns True as soon as the
+        Firefox process is alive (xdotool is skipped).  A minimum wait of
+        _WAYLAND_MIN_POLLS is enforced so Firefox has time to render its
+        first frame before the overlay appears on top of it.
         """
         self._poll_count += 1
         status = self._browser_window_visible()
@@ -187,7 +212,10 @@ class ExitOverlay(Gtk.Window):
             # Firefox exited before we showed — nothing to do
             Gtk.main_quit()
             return False
-        if status or self._poll_count >= _BROWSER_POLL_MAX:
+        # On Wayland: process alive counts as visible, but honour a brief
+        # minimum wait before showing so Firefox renders its kiosk window first.
+        wayland_ready = (not _WAYLAND_SESSION) or (self._poll_count >= _WAYLAND_MIN_POLLS)
+        if (status and wayland_ready) or self._poll_count >= _BROWSER_POLL_MAX:
             if not status:
                 print(
                     "kiosk-exit-overlay: xdotool did not detect Firefox window "

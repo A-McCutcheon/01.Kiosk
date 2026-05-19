@@ -62,6 +62,35 @@ else
 fi
 echo "      Done."
 
+# ── Disconnect snap Firefox Wayland plug ───────────────────────────────────
+# snap-confine's 'wayland' interface plug mounts the host Wayland socket
+# inside the snap namespace and re-injects WAYLAND_DISPLAY there, even when
+# the host environment has WAYLAND_DISPLAY unset ('env -u WAYLAND_DISPLAY').
+# This means Firefox always connects to Wayland inside the snap, making its
+# window invisible on GNOME 46 (no activation token → focus-stealing
+# prevention hides it) and preventing xdotool from finding it (Wayland
+# windows are opaque to xdotool).
+#
+# Disconnecting the plug removes the Wayland socket mount from the snap
+# namespace so Firefox falls back to X11/XWayland, where xdotool and wmctrl
+# can manage the window normally.  'snap disconnect' is persistent across
+# reboots and snap refreshes.
+if command -v snap &>/dev/null && snap list firefox &>/dev/null; then
+    _wl_state="$(snap connections firefox 2>/dev/null \
+        | awk '$1 == "wayland" { print $3 }' || true)"
+    if [[ "${_wl_state}" == "-" ]]; then
+        echo "      snap Firefox wayland plug already disconnected – OK."
+    else
+        if snap disconnect firefox:wayland 2>/dev/null; then
+            echo "      Disconnected snap Firefox wayland plug (forces XWayland mode)."
+        else
+            echo "      WARNING: could not disconnect snap Firefox wayland plug."
+            echo "               Firefox may still open on Wayland and remain invisible."
+            echo "               Try manually: sudo snap disconnect firefox:wayland"
+        fi
+    fi
+fi
+
 # ── 2. Kiosk OS user ───────────────────────────────────────────────────────
 echo "[2/6] Setting up OS user '${KIOSK_USER}'…"
 if ! id "${KIOSK_USER}" &>/dev/null; then
@@ -197,17 +226,7 @@ cat > "${FIREFOX_POLICY_DIR}/policies.json" <<'EOF'
     "DontCheckDefaultBrowser": true,
     "NoDefaultBookmarks": true,
     "DisplayBookmarksToolbar": "never",
-    "DisplayMenuBar": "default-off",
-    "Preferences": {
-      "gfx.webrender.all": {
-        "Value": false,
-        "Status": "locked"
-      },
-      "layers.acceleration.disabled": {
-        "Value": true,
-        "Status": "locked"
-      }
-    }
+    "DisplayMenuBar": "default-off"
   }
 }
 EOF
