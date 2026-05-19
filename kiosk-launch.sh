@@ -937,12 +937,22 @@ if [[ ${_ff_exit} -ne 0 ]] && [[ ${_ff_run_secs} -lt 10 ]]; then
             echo "  ${_ffln}" >&2
         done < "${_ff_stderr_log}"
     fi
-    # snap Firefox logs: captured by snap's own journal service – provides
-    # the actual error message written before the snap sandbox tears down.
+    # snap Firefox logs: try app and snap-level targets to capture sandbox
+    # startup errors before teardown.
     if command -v snap &>/dev/null; then
         echo "kiosk-launch: snap logs firefox (last 10 lines):" >&2
-        snap logs firefox -n10 2>/dev/null \
-            | while IFS= read -r _sl; do echo "  ${_sl}" >&2; done || true
+        _snap_log_lines="$(
+            snap logs firefox.firefox -n10 2>/dev/null \
+                || snap logs firefox -n10 2>/dev/null \
+                || true
+        )"
+        if [[ -n "${_snap_log_lines}" ]]; then
+            while IFS= read -r _sl; do
+                echo "  ${_sl}" >&2
+            done <<< "${_snap_log_lines}"
+        else
+            echo "  (no snap log lines available)" >&2
+        fi
     fi
 fi
 

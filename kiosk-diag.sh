@@ -11,6 +11,8 @@ KIOSK_USER="${1:-kiosk}"
 FAIL=0
 CURRENT_SECTION=""
 FIRST_PASS_FAIL_SECTION=""
+RUNTIME_FIREFOX_CRASH=false
+RUNTIME_DISPLAY_ERROR=false
 TITLE_SNAP_FIREFOX_INTERFACES="snap Firefox interfaces"
 TITLE_INSTALLED_SCRIPT_FRESHNESS="Installed script freshness"
 TITLE_SERVICE_RESTART_CHECK="Service restart check"
@@ -357,8 +359,9 @@ elif ! grep -q '\-u GDK_BACKEND' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q 'Firefox stderr output:' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing Firefox stderr capture for crash diagnostics)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
-elif ! grep -q 'snap logs firefox -n' "${INSTALLED_LAUNCH}" 2>/dev/null; then
-    _fail "${INSTALLED_LAUNCH} is outdated (missing snap logs capture on crash: cannot see Firefox's startup error from the snap journal)"
+elif ! { grep -q 'snap logs firefox.firefox -n10' "${INSTALLED_LAUNCH}" 2>/dev/null \
+        && grep -q 'snap logs firefox -n10' "${INSTALLED_LAUNCH}" 2>/dev/null; }; then
+    _fail "${INSTALLED_LAUNCH} is outdated (missing robust snap app/service log capture on crash)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 elif ! grep -q 'XWayland socket:' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing XWayland socket state in pre-launch diagnostics)"
@@ -427,10 +430,20 @@ _begin_section "kiosk_browser_service_journal" "${TITLE_KIOSK_BROWSER_SERVICE_JO
 if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
     KIOSK_UID=$(id -u "${KIOSK_USER}" 2>/dev/null || true)
     if [[ -n "${KIOSK_UID}" ]]; then
-        journalctl --boot --no-pager \
+        _kiosk_journal="$(journalctl --boot --no-pager \
             _UID="${KIOSK_UID}" _SYSTEMD_USER_UNIT="kiosk-browser.service" \
-            2>/dev/null | tail -100 | sed 's/^/  /' \
-            || echo "  (Could not read kiosk-browser journal -- run as root or as '${KIOSK_USER}')"
+            2>/dev/null | tail -100 || true)"
+        if [[ -n "${_kiosk_journal}" ]]; then
+            echo "${_kiosk_journal}" | sed 's/^/  /'
+            if echo "${_kiosk_journal}" | grep -Eq 'WARNING Firefox crashed at startup|Firefox \(PID [0-9]+\) exited with status [1-9]'; then
+                RUNTIME_FIREFOX_CRASH=true
+            fi
+            if echo "${_kiosk_journal}" | grep -q 'cannot open display: :0'; then
+                RUNTIME_DISPLAY_ERROR=true
+            fi
+        else
+            echo "  -- No entries --"
+        fi
     fi
 else
     echo "  journalctl not available or kiosk user not found"
@@ -465,8 +478,16 @@ echo ""
 _begin_section "snap_firefox_logs" "${TITLE_SNAP_FIREFOX_LOGS}" \
     "── snap Firefox logs (last 50 lines) ────────────────────────────────"
 if "${_diag_ff_is_snap}" && command -v snap &>/dev/null; then
-    snap logs firefox 2>/dev/null | tail -50 | sed 's/^/  /' \
-        || echo "  (snap logs command failed – try: sudo snap logs firefox)"
+    _snap_logs="$(
+        snap logs firefox.firefox -n50 2>/dev/null \
+            || snap logs firefox -n50 2>/dev/null \
+            || true
+    )"
+    if [[ -n "${_snap_logs}" ]]; then
+        echo "${_snap_logs}" | tail -50 | sed 's/^/  /'
+    else
+        echo "  (no snap log lines available)"
+    fi
 else
     echo "  ℹ  snap Firefox not detected – snap logs skipped."
 fi
@@ -483,7 +504,11 @@ if [[ -n "${KIOSK_HOME}" ]]; then
         _ff_stderr_file="/run/user/${KIOSK_UID}/kiosk-ff-stderr.log"
         if [[ -s "${_ff_stderr_file}" ]]; then
             echo "  ${_ff_stderr_file} (last 30 lines):"
-            tail -30 "${_ff_stderr_file}" | sed 's/^/  /'
+            _ff_stderr_tail="$(tail -30 "${_ff_stderr_file}" || true)"
+            echo "${_ff_stderr_tail}" | sed 's/^/  /'
+            if echo "${_ff_stderr_tail}" | grep -q 'cannot open display: :0'; then
+                RUNTIME_DISPLAY_ERROR=true
+            fi
         else
             echo "  (${_ff_stderr_file} is empty or absent)"
             echo "  Re-run sudo ./install.sh to deploy the stderr-capture update."
@@ -566,15 +591,26 @@ echo "╔═══════════════════════�
 echo "║   Diagnostic Summary                         ║"
 echo "╚══════════════════════════════════════════════╝"
 if [[ ${FAIL} -eq 0 ]]; then
-    echo "  All checks passed."
-    echo "  Interfaces / freshness / restart passed."
-    echo "  If Firefox still does not appear, read the sections in this order:"
+    if "${RUNTIME_FIREFOX_CRASH}" || "${RUNTIME_DISPLAY_ERROR}"; then
+        echo "  Prerequisite checks passed, but runtime failure signals were detected."
+        echo "  Interfaces / freshness / restart passed."
+        echo "  Read these sections in order:"
+    else
+        echo "  All checks passed."
+        echo "  Interfaces / freshness / restart passed."
+        echo "  If Firefox still does not appear, read the sections in this order:"
+    fi
     _section_status_line "kiosk_browser_service_journal"
     _section_status_line "firefox_process_journal"
     _section_status_line "snap_firefox_logs"
     _section_status_line "firefox_stderr_log"
-    echo "  If those logs still point at display access (e.g.,"
-    echo "  'cannot open display: :0'), compare these next:"
+    if "${RUNTIME_DISPLAY_ERROR}"; then
+        echo "  Display-access errors were detected (e.g., 'cannot open display: :0')."
+        echo "  Compare these next:"
+    else
+        echo "  If those logs still point at display access (e.g.,"
+        echo "  'cannot open display: :0'), compare these next:"
+    fi
     _section_status_line "kiosk_user_session_environment"
     _section_status_line "xwayland_auth_entries"
 else
