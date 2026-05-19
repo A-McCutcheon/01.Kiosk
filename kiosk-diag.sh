@@ -373,8 +373,11 @@ elif ! grep -q 'rm -f.*_FF_SNAP_XAUTH' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (kiosk-xauth accumulates stale cookies: old 'unix:0' entry shadows current Mutter cookie; Firefox auth fails silently, no window appears)"
     echo "     The fix recreates kiosk-xauth from scratch on every launch."
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q '_xw_expl_cookie' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (Mutter on Ubuntu 24.04+ writes xauth entries with an empty display-number field; snap Firefox's bundled libX11 cannot match these for DISPLAY=:0 and reports 'cannot open display: :0'; fix adds an explicit ':0' entry after the merge)"
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (includes snap XWayland launch fixes, kiosk-xauth freshened-on-launch, crash diagnostics, and pre-launch display/Xauth logging)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (includes snap XWayland launch fixes, kiosk-xauth freshened-on-launch, explicit display xauth entry, crash diagnostics, and pre-launch display/Xauth logging)"
 fi
 echo ""
 
@@ -564,6 +567,11 @@ if command -v xauth &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
         echo "  ${_xauth_file}:"
         xauth -f "${_xauth_file}" list 2>/dev/null | sed 's/^/    /' \
             || echo "    (xauth list failed)"
+        if ! xauth -f "${_xauth_file}" list 2>/dev/null | grep -q 'unix:0'; then
+            echo "  ⚠  kiosk-xauth has no explicit ':0' entry – Mutter wrote empty display-number"
+            echo "     keys.  snap Firefox's libX11 may fail to match these for DISPLAY=:0."
+            echo "     Fix: re-run sudo ./install.sh then restart kiosk-browser.service."
+        fi
     else
         echo "  ${_xauth_file} does not exist"
     fi

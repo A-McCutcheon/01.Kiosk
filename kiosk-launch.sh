@@ -595,6 +595,22 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
                     if ( umask 077; xauth -f "${_FF_SNAP_XAUTH}" merge "${_mm_src}" 2>/dev/null ); then
                         export XAUTHORITY="${_FF_SNAP_XAUTH}"
                         echo "kiosk-launch: snap XWayland: Xauthority merged to ${_FF_SNAP_XAUTH}" >&2
+                        # Mutter on Ubuntu 24.04+ writes auth entries with an empty
+                        # display-number field ("kiosk/unix:" rather than "kiosk/unix:0").
+                        # The libX11 build bundled in the gnome-46-2404 content snap (used
+                        # by snap Firefox) does not match those empty-display-number entries
+                        # when looking up auth for DISPLAY=:0, so Firefox fails with
+                        # "cannot open display: :0" even though the cookie is correct.
+                        # Fix: after the merge, explicitly add an entry keyed to the current
+                        # display so every libX11 version finds an unambiguous match.
+                        _xw_expl_cookie="$(xauth -f "${_FF_SNAP_XAUTH}" list 2>/dev/null \
+                            | awk '{print $NF; exit}')"
+                        if [[ -n "${_xw_expl_cookie}" ]]; then
+                            xauth -f "${_FF_SNAP_XAUTH}" \
+                                add "${DISPLAY:-:0}" MIT-MAGIC-COOKIE-1 \
+                                "${_xw_expl_cookie}" 2>/dev/null || true
+                            echo "kiosk-launch: snap XWayland: added explicit ${DISPLAY:-:0} xauth entry" >&2
+                        fi
                     else
                         echo "kiosk-launch: WARNING failed to merge Xauthority into ${_FF_SNAP_XAUTH}" >&2
                     fi
