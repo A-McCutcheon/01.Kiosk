@@ -567,7 +567,8 @@ if command -v xauth &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
         echo "  ${_xauth_file}:"
         xauth -f "${_xauth_file}" list 2>/dev/null | sed 's/^/    /' \
             || echo "    (xauth list failed)"
-        if ! xauth -f "${_xauth_file}" list 2>/dev/null | grep -q 'unix:0'; then
+        if ! xauth -f "${_xauth_file}" list 2>/dev/null \
+                | grep -qE '/unix:0[[:space:]]|/unix:0$'; then
             echo "  ⚠  kiosk-xauth has no explicit ':0' entry – Mutter wrote empty display-number"
             echo "     keys.  snap Firefox's libX11 may fail to match these for DISPLAY=:0."
             echo "     Fix: re-run sudo ./install.sh then restart kiosk-browser.service."

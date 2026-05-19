@@ -604,7 +604,7 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
                         # Fix: after the merge, explicitly add an entry keyed to the current
                         # display so every libX11 version finds an unambiguous match.
                         _xw_expl_cookie="$(xauth -f "${_FF_SNAP_XAUTH}" list 2>/dev/null \
-                            | awk '{print $NF; exit}')"
+                            | awk 'NF == 3 { print $3; exit }')"
                         if [[ -n "${_xw_expl_cookie}" ]]; then
                             xauth -f "${_FF_SNAP_XAUTH}" \
                                 add "${DISPLAY:-:0}" MIT-MAGIC-COOKIE-1 \
