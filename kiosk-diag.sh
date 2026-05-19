@@ -435,7 +435,7 @@ if command -v journalctl &>/dev/null && [[ -n "${KIOSK_HOME}" ]]; then
             2>/dev/null | tail -100 || true)"
         if [[ -n "${_kiosk_journal}" ]]; then
             echo "${_kiosk_journal}" | sed 's/^/  /'
-            if echo "${_kiosk_journal}" | grep -Eq 'WARNING Firefox crashed at startup|Firefox \(PID [0-9]+\) exited with status [1-9]'; then
+            if echo "${_kiosk_journal}" | grep -Eq 'WARNING Firefox crashed at startup|Firefox \(PID [0-9]+\) exited with status [1-9][0-9]*'; then
                 RUNTIME_FIREFOX_CRASH=true
             fi
             if echo "${_kiosk_journal}" | grep -q 'cannot open display: :0'; then
