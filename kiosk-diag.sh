@@ -369,8 +369,12 @@ elif ! grep -q 'XWayland socket:' "${INSTALLED_LAUNCH}" 2>/dev/null; then
 elif ! grep -q 'Mutter Xauth files:' "${INSTALLED_LAUNCH}" 2>/dev/null; then
     _fail "${INSTALLED_LAUNCH} is outdated (missing Mutter Xauth file list in pre-launch diagnostics)"
     echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
+elif ! grep -q 'rm -f.*_FF_SNAP_XAUTH' "${INSTALLED_LAUNCH}" 2>/dev/null; then
+    _fail "${INSTALLED_LAUNCH} is outdated (kiosk-xauth accumulates stale cookies: old 'unix:0' entry shadows current Mutter cookie; Firefox auth fails silently, no window appears)"
+    echo "     The fix recreates kiosk-xauth from scratch on every launch."
+    echo "     → Re-run: sudo ./install.sh  (copies latest scripts to /opt/kiosk)"
 else
-    _ok  "${INSTALLED_LAUNCH} is up-to-date (includes snap XWayland launch fixes, kiosk-xauth cache, crash diagnostics, and pre-launch display/Xauth logging)"
+    _ok  "${INSTALLED_LAUNCH} is up-to-date (includes snap XWayland launch fixes, kiosk-xauth freshened-on-launch, crash diagnostics, and pre-launch display/Xauth logging)"
 fi
 echo ""
 

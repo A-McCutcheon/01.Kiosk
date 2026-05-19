@@ -584,6 +584,14 @@ if "${_FF_IS_SNAP}" && [[ "${_LAUNCH_SESSION_LC}" == "wayland" ]]; then
                 # but ensure the cache directory exists before writing the file
                 # so ad-hoc test environments do not fail on the first launch.
                 if install -d -m 700 "$(dirname "${_FF_SNAP_XAUTH}")" 2>/dev/null; then
+                    # Always recreate the cache file from scratch.  xauth merge
+                    # only replaces entries with identical keys.  Mutter changes
+                    # its entry key across XWayland sessions (e.g. "unix:0" →
+                    # "unix:" between reboots), so old entries accumulate and the
+                    # stale "kiosk/unix:0" entry shadows the current one.
+                    # Firefox matches the specific "unix:0" key first, gets the
+                    # wrong (stale) cookie, and silently fails auth → no window.
+                    rm -f "${_FF_SNAP_XAUTH}" 2>/dev/null || true
                     if ( umask 077; xauth -f "${_FF_SNAP_XAUTH}" merge "${_mm_src}" 2>/dev/null ); then
                         export XAUTHORITY="${_FF_SNAP_XAUTH}"
                         echo "kiosk-launch: snap XWayland: Xauthority merged to ${_FF_SNAP_XAUTH}" >&2
